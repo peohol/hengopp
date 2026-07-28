@@ -7,6 +7,8 @@ type Props<T extends string> = {
   onChange: (value: T) => void
   disabled?: boolean
   hideLabel?: boolean
+  /** Stack the options vertically — reads like a radio group and fits long labels. */
+  stacked?: boolean
   testId?: string
 }
 
@@ -18,14 +20,20 @@ export function Segmented<T extends string>({
   onChange,
   disabled,
   hideLabel,
+  stacked,
   testId,
 }: Props<T>) {
   return (
-    <div className="field">
+    <div className={`field${stacked ? ' field--block' : ''}`}>
       <span className={hideLabel ? 'visually-hidden' : 'field__label'} id={`${testId ?? label}-label`}>
         {label}
       </span>
-      <div className="seg" role="group" aria-label={label} data-testid={testId}>
+      <div
+        className={`seg${stacked ? ' seg--stacked' : ''}`}
+        role="group"
+        aria-label={label}
+        data-testid={testId}
+      >
         {options.map((opt) => (
           <button
             key={opt.value}
@@ -36,7 +44,8 @@ export function Segmented<T extends string>({
             data-testid={testId ? `${testId}-${opt.value}` : undefined}
             onClick={() => onChange(opt.value)}
           >
-            {opt.label}
+            {stacked ? <span className="seg__dot" aria-hidden="true" /> : null}
+            <span>{opt.label}</span>
           </button>
         ))}
       </div>

@@ -53,6 +53,7 @@ export function GridEditor({ grid, onChange, showToggle, idPrefix }: Props) {
           <span>Vis rutenett på flaten</span>
         </label>
       ) : null}
+      {showToggle ? <hr className="msep" /> : null}
 
       <div className="stack" aria-disabled={showToggle && !grid.enabled}>
         <div className="field">
@@ -132,24 +133,27 @@ export function GridEditor({ grid, onChange, showToggle, idPrefix }: Props) {
             <p className="hint">Desimaltall er tillatt, for eksempel 10 × 3,5. Begge verdier må være minst 1.</p>
 
             {fractionalCols || fractionalRows ? (
-              <div className="popover__row">
-                <Segmented
-                  label="Avkuttet celle vannrett"
-                  value={grid.hAlign}
-                  options={H_ALIGN_OPTIONS}
-                  disabled={!fractionalCols}
-                  testId={`${idPrefix}-halign`}
-                  onChange={(hAlign) => onChange({ ...grid, hAlign })}
-                />
-                <Segmented
-                  label="Avkuttet celle loddrett"
-                  value={grid.vAlign}
-                  options={V_ALIGN_OPTIONS}
-                  disabled={!fractionalRows}
-                  testId={`${idPrefix}-valign`}
-                  onChange={(vAlign) => onChange({ ...grid, vAlign })}
-                />
-              </div>
+              <>
+                <hr className="msep" />
+                <div className="popover__row">
+                  <Segmented
+                    label="Avkuttet celle vannrett"
+                    value={grid.hAlign}
+                    options={H_ALIGN_OPTIONS}
+                    disabled={!fractionalCols}
+                    testId={`${idPrefix}-halign`}
+                    onChange={(hAlign) => onChange({ ...grid, hAlign })}
+                  />
+                  <Segmented
+                    label="Avkuttet celle loddrett"
+                    value={grid.vAlign}
+                    options={V_ALIGN_OPTIONS}
+                    disabled={!fractionalRows}
+                    testId={`${idPrefix}-valign`}
+                    onChange={(vAlign) => onChange({ ...grid, vAlign })}
+                  />
+                </div>
+              </>
             ) : null}
           </>
         )}

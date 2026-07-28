@@ -4,6 +4,7 @@
   --bg: #eeeeec;
   --panel: #fbfbfa;
   --panel-raised: #ffffff;
+  --toolbar-bg: #e7e8e5;
   --ink: #14161a;
   --ink-muted: #5b6068;
   --line: #d6d7db;
@@ -15,11 +16,21 @@
   --warning-soft: #fdf3dc;
   --radius: 6px;
   --radius-lg: 10px;
-  --control-h: 32px;
+  --control-h: 28px;
   --touch: 44px;
   --shadow-pop: 0 6px 24px rgba(20, 22, 26, 0.14), 0 1px 2px rgba(20, 22, 26, 0.1);
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Subtle per-section tints so the toolbar reads as distinct blocks. */
+  --sect-project: #eaf0f8;
+  --sect-objects: #f8efe9;
+  --sect-precision: #eeecf8;
+  --sect-placement: #e9f3ec;
+  --sect-groups: #f4ecf7;
+  --sect-order: #f7f2e6;
+  --sect-history: #e9f2f2;
+  --sect-view: #eff0f3;
 }
 
 * {
@@ -31,6 +42,8 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  /* The app is a fixed viewport-sized layout: the page itself never scrolls. */
+  overflow: hidden;
 }
 
 body {
@@ -57,6 +70,7 @@ button {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .visually-hidden {
@@ -75,55 +89,35 @@ button {
 
 .toolbar {
   flex: 0 0 auto;
-  background: var(--panel);
+  background: var(--toolbar-bg);
   border-bottom: 1px solid var(--line);
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  overflow-x: auto;
-  overflow-y: visible;
+  /* Sections wrap instead of scrolling sideways, so nothing ever overflows the
+     viewport horizontally. The height cap is a last resort on tiny screens. */
+  max-height: 50vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
 }
 
 .toolbar__inner {
   display: flex;
-  align-items: center;
-  gap: 0;
-  row-gap: 6px;
-  padding: 6px 8px;
-  /* Roomy screens wrap into a second row; narrow screens scroll horizontally. */
+  align-items: stretch;
   flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 5px;
   width: 100%;
-}
-
-@media (max-width: 899px) {
-  .toolbar__inner {
-    flex-wrap: nowrap;
-    width: auto;
-    min-width: max-content;
-  }
-}
-
-.toolbar__brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-right: 10px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
 }
 
 .tgroup {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 7px;
-  min-width: max-content;
-}
-
-.tgroup + .tgroup {
-  border-left: 1px solid var(--line);
+  flex-direction: column;
+  gap: 1px;
+  max-width: 100%;
+  padding: 2px 6px 4px;
+  background: var(--panel);
+  border: 1px solid rgba(20, 22, 26, 0.07);
+  border-radius: 7px;
 }
 
 .tgroup__label {
@@ -131,18 +125,50 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--ink-muted);
-  margin-right: 2px;
   white-space: nowrap;
+  padding-left: 1px;
+}
+
+.tgroup__row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tgroup--project {
+  background: var(--sect-project);
+}
+.tgroup--objects {
+  background: var(--sect-objects);
+}
+.tgroup--precision {
+  background: var(--sect-precision);
+}
+.tgroup--placement {
+  background: var(--sect-placement);
+}
+.tgroup--groups {
+  background: var(--sect-groups);
+}
+.tgroup--order {
+  background: var(--sect-order);
+}
+.tgroup--history {
+  background: var(--sect-history);
+}
+.tgroup--view {
+  background: var(--sect-view);
 }
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   height: var(--control-h);
   min-width: var(--control-h);
-  padding: 0 9px;
+  padding: 0 7px;
   background: var(--panel-raised);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -205,6 +231,24 @@ button {
   border-color: var(--line);
 }
 
+/* Primary action inside a popover — clearly separated from the settings above. */
+.btn--action {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  height: auto;
+  min-height: calc(var(--control-h) + 4px);
+  padding: 5px 9px;
+  background: var(--accent-soft);
+  border-color: #b3cbec;
+  font-weight: 600;
+}
+
+.btn--action:hover:not(:disabled) {
+  background: #d5e5fa;
+  border-color: #9dbdec;
+}
+
 @media (pointer: coarse) {
   .btn {
     height: var(--touch);
@@ -213,12 +257,26 @@ button {
   .btn--icon {
     width: var(--touch);
   }
+  .btn--action {
+    height: auto;
+    min-height: var(--touch);
+  }
 }
 
 .field {
   display: inline-flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+}
+
+/* Full-width variant used by stacked option groups inside popovers. */
+.field--block {
+  display: flex;
+  width: 100%;
+}
+
+.field--block > .seg {
+  align-self: stretch;
 }
 
 .field__label {
@@ -253,7 +311,7 @@ button {
   height: calc(var(--control-h) - 2px);
   border: 0;
   background: transparent;
-  padding: 0 7px;
+  padding: 0 5px;
   font: inherit;
   color: inherit;
   min-width: 0;
@@ -266,7 +324,7 @@ button {
 .field__suffix {
   display: inline-flex;
   align-items: center;
-  padding-right: 7px;
+  padding-right: 5px;
   color: var(--ink-muted);
   font-size: 11px;
 }
@@ -279,11 +337,11 @@ button {
 
 .field__step button {
   flex: 1;
-  width: 20px;
+  width: 16px;
   border: 0;
   background: var(--panel);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1;
   padding: 0;
   color: var(--ink-muted);
@@ -309,7 +367,7 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel-raised);
-  padding: 0 8px;
+  padding: 0 6px;
   font: inherit;
   color: inherit;
 }
@@ -344,7 +402,7 @@ button {
   border: 0;
   background: transparent;
   height: calc(var(--control-h) - 2px);
-  padding: 0 10px;
+  padding: 0 8px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -363,6 +421,50 @@ button {
   .seg button {
     height: calc(var(--touch) - 2px);
     min-width: var(--touch);
+  }
+}
+
+/* Vertical option group — behaves like a radio group and fits long labels. */
+.seg--stacked {
+  flex-direction: column;
+  width: 100%;
+}
+
+.seg--stacked button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: auto;
+  min-height: var(--control-h);
+  min-width: 0;
+  padding: 5px 8px;
+  text-align: left;
+  white-space: normal;
+}
+
+.seg--stacked button + button {
+  border-left: 0;
+  border-top: 1px solid var(--line);
+}
+
+.seg__dot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-raised);
+}
+
+.seg--stacked button[aria-pressed='true'] .seg__dot {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2.5px var(--panel-raised);
+  background: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .seg--stacked button {
+    min-height: var(--touch);
   }
 }
 
@@ -404,7 +506,7 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-pop);
-  padding: 12px;
+  padding: 11px;
 }
 
 .popover__title {
@@ -426,6 +528,14 @@ button {
   flex-wrap: wrap;
 }
 
+/* Divider between sections of a popover menu. */
+.msep {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1px 0;
+}
+
 .stack {
   display: flex;
   flex-direction: column;
@@ -443,6 +553,7 @@ button {
   color: var(--ink-muted);
   font-size: 11px;
   line-height: 1.45;
+  margin: 0;
 }
 
 .checkbox {
@@ -450,7 +561,7 @@ button {
   align-items: center;
   gap: 7px;
   cursor: pointer;
-  min-height: 28px;
+  min-height: 26px;
 }
 
 .checkbox input {
@@ -459,37 +570,64 @@ button {
   accent-color: var(--accent);
 }
 
-/* -------------------------------------------------------------- 3x3 align */
+/* --------------------------------------------------- Command lists in menus */
 
-.matrix {
+.menu-grid {
   display: grid;
-  grid-template-columns: repeat(3, 52px);
-  gap: 4px;
-  width: max-content;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.matrix button {
-  width: 52px;
-  height: 52px;
-  display: grid;
-  place-items: center;
+.menu-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 6px;
   background: var(--panel-raised);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
 }
 
-.matrix button:hover:not(:disabled) {
+.menu-btn:hover:not(:disabled) {
   background: var(--accent-soft);
   border-color: #9dbdec;
 }
 
-.matrix button:disabled {
-  opacity: 0.4;
+.menu-btn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
+  background: #f2f2f1;
+  border-style: dashed;
+}
+
+@media (pointer: coarse) {
+  .menu-btn {
+    height: var(--touch);
+  }
 }
 
 /* ---------------------------------------------------------------- Canvas */
+
+.workspace-wrapper {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
 
 .workspace {
   position: relative;

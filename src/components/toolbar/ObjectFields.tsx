@@ -40,7 +40,7 @@ export function ObjectFields() {
       stepMm={step}
       positiveOnly={positiveOnly}
       disabled={disabled}
-      widthPx={62}
+      widthPx={52}
       testId={`prop-${key}`}
       onEditStart={beginGeometryEdit}
       onPreview={(v) => previewSelectionGeometry(key, v)}
@@ -58,7 +58,7 @@ export function ObjectFields() {
         <input
           id="prop-name"
           className="input"
-          style={{ width: 132 }}
+          style={{ width: 108 }}
           value={selection.length > 1 ? `${selection.length} valgte` : nameText}
           disabled={selection.length !== 1}
           data-testid="prop-name"

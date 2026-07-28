@@ -68,6 +68,8 @@ export function ProjectMenu() {
             />
           </div>
 
+          <hr className="msep" />
+
           <button type="button" className="btn" data-testid="export-project" onClick={handleExport}>
             Eksporter som JSON
           </button>
@@ -92,6 +94,8 @@ export function ProjectMenu() {
               if (file) void handleImportFile(file)
             }}
           />
+
+          <hr className="msep" />
 
           <button
             type="button"

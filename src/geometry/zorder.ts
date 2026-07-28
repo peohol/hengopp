@@ -2,13 +2,6 @@ import type { SceneObject } from '@/models/object'
 
 export type ZOrderOp = 'forward' | 'backward' | 'front' | 'back'
 
-export const Z_ORDER_LABELS: Record<ZOrderOp, string> = {
-  forward: 'Flytt ett nivå frem',
-  backward: 'Flytt ett nivå bak',
-  front: 'Flytt helt fremst',
-  back: 'Flytt helt bakerst',
-}
-
 /** Object ids ordered back-to-front. */
 export function orderedObjectIds(objects: Record<string, SceneObject>): string[] {
   return Object.values(objects)

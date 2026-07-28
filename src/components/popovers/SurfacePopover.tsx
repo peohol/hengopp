@@ -38,12 +38,14 @@ export function SurfacePopover() {
               onCommit={(v) => commit((draft) => void (draft.surface.heightMm = v))}
             />
           </div>
+          <hr className="msep" />
           <ColorField
             label="Flatefarge"
             value={doc.surface.color}
             testId="surface-color"
             onChange={(hex) => commit((draft) => void (draft.surface.color = hex))}
           />
+          <hr className="msep" />
           <p className="hint">
             Flaten er grunnflaten alle objekter er relative til. Objekter flyttes ikke automatisk hvis
             flaten gjøres mindre – de markeres i stedet som utenfor flaten.

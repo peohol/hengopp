@@ -176,16 +176,42 @@ test.describe('Hengopp', () => {
     expect(keyId).toBe(aObject.id)
 
     const historyBefore = await historyLength(page)
+    const bBefore = await objectByName(page, 'B')
     await page.getByTestId('align-popover').click()
-    await page.getByTestId('align-top-left').click()
+    await page.getByTestId('align-reference-key').click()
 
+    await page.getByTestId('align-left').click()
+    const bAfterX = await objectByName(page, 'B')
+    expect(bAfterX.xMm).toBeCloseTo(aObject.xMm, 3)
+    // Horizontal alignment must leave every y-position untouched.
+    expect(bAfterX.yMm).toBeCloseTo(bBefore.yMm, 3)
+
+    await page.getByTestId('align-top').click()
     const a2 = await objectByName(page, 'A')
     const b2 = await objectByName(page, 'B')
-    // The key object did not move; B aligned to it.
+    // The key object never moved; B aligned to it on both axes.
     expect(a2.xMm).toBeCloseTo(aObject.xMm, 3)
+    expect(a2.yMm).toBeCloseTo(aObject.yMm, 3)
     expect(b2.xMm).toBeCloseTo(a2.xMm, 3)
     expect(b2.yMm).toBeCloseTo(a2.yMm, 3)
-    expect(await historyLength(page)).toBe(historyBefore + 1)
+    expect(await historyLength(page)).toBe(historyBefore + 2)
+  })
+
+  test('8b: aligning against the surface centres a single object', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page)
+    await disableSnapping(page)
+    await createObject(page, { name: 'A', widthCm: 40, heightCm: 40 })
+    await clickModel(page, await centerOf(page, 'A'))
+
+    const doc = await getDoc(page)
+    await page.getByTestId('align-popover').click()
+    await page.getByTestId('align-center-x').click()
+    await page.getByTestId('align-bottom').click()
+
+    const a = await objectByName(page, 'A')
+    expect(a.xMm + a.widthMm / 2).toBeCloseTo(doc.surface.widthMm / 2, 3)
+    expect(a.yMm + a.heightMm).toBeCloseTo(doc.surface.heightMm, 3)
   })
 
   test('9: distribute three objects', async ({ page }) => {
@@ -402,7 +428,6 @@ test.describe('Hengopp', () => {
     expect(doc.objects[fram.id].zIndex).toBeLessThan(doc.objects[bak.id].zIndex)
     expect(await historyLength(page)).toBe(historyBefore + 1)
 
-    await page.getByTestId('z-popover').click()
     await page.getByTestId('z-front').click()
     doc = await getDoc(page)
     expect(doc.objects[fram.id].zIndex).toBeGreaterThan(doc.objects[bak.id].zIndex)

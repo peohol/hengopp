@@ -46,7 +46,7 @@ export function HelpDialog() {
       }
     >
       <div className="stack">
-        <p className="hint" style={{ margin: 0 }}>
+        <p className="hint">
           Hengopp arbeider internt i millimeter. Enheten du velger påvirker bare visning og input – aldri
           geometrien. Zoom endrer heller aldri lagrede verdier.
         </p>
@@ -62,7 +62,7 @@ export function HelpDialog() {
             ))}
           </tbody>
         </table>
-        <p className="hint" style={{ margin: 0 }}>
+        <p className="hint">
           På touch: bruk flervalgsmodus i toppmenyen for å velge flere objekter, pinch for å zoome, to fingre
           for å panorere og dobbelttapp for å redigere.
         </p>
