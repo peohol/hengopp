@@ -80,29 +80,52 @@ export function parseProject(raw: unknown): ParseProjectResult {
 }
 
 /**
- * Drop references that cannot be resolved (dangling group children, pinned
- * measurements pointing at deleted objects) so corrupt data never crashes the app.
+ * Repair a structurally valid but semantically broken document so it can never
+ * crash the app: drop dangling references, reconcile the two representations of
+ * the hierarchy (parent pointers and child lists) and break any cycle.
+ *
+ * The parent pointers are made authoritative and acyclic first; the child lists
+ * are then rebuilt from them, which makes a cycle in `childGroupIds`
+ * impossible by construction.
  */
 export function sanitiseProject(project: HengoppProject): HengoppProject {
   const objects = { ...project.objects }
   const groups = { ...project.groups }
 
+  // 1. Parent pointers must reference an existing group.
   for (const [id, obj] of Object.entries(objects)) {
     if (obj.parentGroupId && !groups[obj.parentGroupId]) {
       objects[id] = { ...obj, parentGroupId: null }
     }
   }
   for (const [id, group] of Object.entries(groups)) {
-    const childObjectIds = group.childObjectIds.filter((c) => objects[c])
-    const childGroupIds = group.childGroupIds.filter((c) => groups[c] && c !== id)
-    const parentGroupId = group.parentGroupId && groups[group.parentGroupId] ? group.parentGroupId : null
-    groups[id] = { ...group, childObjectIds, childGroupIds, parentGroupId }
+    const parentGroupId =
+      group.parentGroupId && groups[group.parentGroupId] && group.parentGroupId !== id
+        ? group.parentGroupId
+        : null
+    groups[id] = { ...group, parentGroupId }
   }
-  // Remove groups that would form a cycle or that are empty after cleanup.
+
+  // 2. A child listed by a group, but with no parent of its own, adopts that
+  //    group as parent. First claim wins, so a child is never claimed twice.
   for (const [id, group] of Object.entries(groups)) {
-    let cursor = group.parentGroupId
+    for (const childId of group.childObjectIds) {
+      const child = objects[childId]
+      if (child && child.parentGroupId === null) objects[childId] = { ...child, parentGroupId: id }
+    }
+    for (const childId of group.childGroupIds) {
+      const child = groups[childId]
+      if (child && child.parentGroupId === null && childId !== id) {
+        groups[childId] = { ...child, parentGroupId: id }
+      }
+    }
+  }
+
+  // 3. Break parent-pointer cycles, so the hierarchy is a forest.
+  for (const id of Object.keys(groups)) {
+    let cursor = groups[id].parentGroupId
     let guard = 0
-    while (cursor && guard < 100) {
+    while (cursor && guard < Object.keys(groups).length + 1) {
       if (cursor === id) {
         groups[id] = { ...groups[id], parentGroupId: null }
         break
@@ -110,6 +133,34 @@ export function sanitiseProject(project: HengoppProject): HengoppProject {
       cursor = groups[cursor]?.parentGroupId ?? null
       guard += 1
     }
+    // Depth beyond the number of groups can only mean a cycle further up.
+    if (guard >= Object.keys(groups).length + 1) {
+      groups[id] = { ...groups[id], parentGroupId: null }
+    }
+  }
+
+  // 4. Rebuild the child lists from the (now acyclic) parent pointers, keeping
+  //    the original ordering where it is still meaningful.
+  const orderIn = (list: string[], id: string) => {
+    const index = list.indexOf(id)
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index
+  }
+  for (const [id, group] of Object.entries(groups)) {
+    const childObjectIds = Object.values(objects)
+      .filter((o) => o.parentGroupId === id)
+      .map((o) => o.id)
+      .sort(
+        (a, b) =>
+          orderIn(group.childObjectIds, a) - orderIn(group.childObjectIds, b) || a.localeCompare(b),
+      )
+    const childGroupIds = Object.values(groups)
+      .filter((g) => g.parentGroupId === id)
+      .map((g) => g.id)
+      .sort(
+        (a, b) =>
+          orderIn(group.childGroupIds, a) - orderIn(group.childGroupIds, b) || a.localeCompare(b),
+      )
+    groups[id] = { ...group, childObjectIds, childGroupIds }
   }
 
   const pinnedMeasurements = project.pinnedMeasurements.filter((m) => objects[m.objectId] || groups[m.objectId])

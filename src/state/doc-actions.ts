@@ -169,7 +169,11 @@ function cloneEntity(
   id: string,
   parentGroupId: string | null,
   rename: boolean,
+  seen: Set<string> = new Set(),
 ): string | null {
+  // Defence in depth: a malformed child list must never recurse forever.
+  if (seen.has(id)) return null
+  seen.add(id)
   const obj = draft.objects[id]
   if (obj) {
     const clone: SceneObject = {
@@ -197,7 +201,7 @@ function cloneEntity(
   draft.groups[cloneGroup.id] = cloneGroup
   if (parentGroupId) attachToParent(draft, cloneGroup.id, parentGroupId)
   for (const childId of [...group.childObjectIds, ...group.childGroupIds]) {
-    cloneEntity(draft, childId, cloneGroup.id, false)
+    cloneEntity(draft, childId, cloneGroup.id, false, seen)
   }
   return cloneGroup.id
 }

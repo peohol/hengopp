@@ -147,4 +147,45 @@ describe('what is not history', () => {
     store().patch((draft) => void (draft.displayUnit = 'mm'))
     expect(JSON.stringify(store().doc.objects)).toBe(before)
   })
+
+  it('keeps patched settings across undo and redo', () => {
+    store().commit((draft) => void (draft.objects.a.xMm = 40))
+    // Change non-history state after the action.
+    store().patch((draft) => {
+      draft.displayUnit = 'mm'
+      draft.settings.snapToGrid = false
+      draft.settings.movementStepMm = 25
+    })
+
+    store().undo()
+    expect(store().doc.objects.a.xMm).toBe(0)
+    expect(store().doc.displayUnit).toBe('mm')
+    expect(store().doc.settings.snapToGrid).toBe(false)
+    expect(store().doc.settings.movementStepMm).toBe(25)
+
+    store().redo()
+    expect(store().doc.objects.a.xMm).toBe(40)
+    expect(store().doc.displayUnit).toBe('mm')
+    expect(store().doc.settings.snapToGrid).toBe(false)
+  })
+
+  it('keeps patched settings across several undo steps', () => {
+    for (let i = 1; i <= 4; i += 1) store().commit((draft) => void (draft.objects.a.xMm = i * 10))
+    store().patch((draft) => void (draft.displayUnit = 'mm'))
+    for (let i = 0; i < 4; i += 1) {
+      store().undo()
+      expect(store().doc.displayUnit).toBe('mm')
+    }
+  })
+
+  it('applies a patch made during an open transaction to the base snapshot too', () => {
+    store().beginTransaction()
+    store().updateTransient((draft) => void (draft.objects.a.xMm = 15))
+    store().patch((draft) => void (draft.displayUnit = 'mm'))
+    store().commitTransaction()
+
+    store().undo()
+    expect(store().doc.objects.a.xMm).toBe(0)
+    expect(store().doc.displayUnit).toBe('mm')
+  })
 })

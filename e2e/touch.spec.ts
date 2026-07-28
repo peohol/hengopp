@@ -58,8 +58,8 @@ test.describe('Narrow, touch-capable viewport', () => {
     const before = await objectByName(page, 'Bilde')
     const from = await toScreen(page, center.x, center.y)
     const to = await toScreen(page, center.x + 300, center.y)
-    // Wait past the double-tap window, then drag with a single pointer.
-    await page.waitForTimeout(600)
+    // Immediately after the tap — inside the double-tap window — a press that
+    // moves must drag rather than open the editor.
     await page.mouse.move(from.x, from.y)
     await page.mouse.down()
     await page.mouse.move(from.x + 8, from.y, { steps: 2 })
@@ -93,14 +93,13 @@ test.describe('Narrow, touch-capable viewport', () => {
     await tapModel(page, b.x, b.y)
     expect(await selection(page)).toHaveLength(2)
 
-    // Tapping an already selected object removes it again.
-    // (Wait past the double-tap window so this is not read as an edit gesture.)
-    await page.waitForTimeout(600)
+    // Tapping an already selected object removes it again. In multi-select mode
+    // a quick second tap toggles; it never opens the editor.
     await tapModel(page, b.x, b.y)
     expect(await selection(page)).toHaveLength(1)
+    await expect(page.getByTestId('object-dialog')).toBeHidden()
 
     // Group actions are available from the menu, not only via modifier keys.
-    await page.waitForTimeout(600)
     await tapModel(page, b.x, b.y)
     await expect(page.getByTestId('group')).toBeEnabled()
     await page.getByTestId('group').click()

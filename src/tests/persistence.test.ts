@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { produce } from 'immer'
+import { duplicateEntities } from '@/state/doc-actions'
 import {
   BACKUP_KEY,
   STORAGE_KEY,
@@ -90,6 +92,66 @@ describe('validation and repair', () => {
     expect(parseProject(bad).ok).toBe(false)
   })
 
+  it('breaks a cycle that only exists in the child lists', () => {
+    // A lists B as a child and B lists A as a child, but only B claims a parent.
+    // The parent pointers alone look acyclic, so the child lists must be rebuilt.
+    const a = makeObject({ id: 'oa', parentGroupId: 'A' })
+    const project = makeProject(
+      [a],
+      [
+        makeGroup({ id: 'A', parentGroupId: 'B', childObjectIds: ['oa'], childGroupIds: ['B'] }),
+        makeGroup({ id: 'B', parentGroupId: null, childGroupIds: ['A'] }),
+      ],
+    )
+    const result = parseProject(project)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const { groups } = result.project
+    // Exactly one of the two edges survives, in both representations.
+    expect(groups.A.childGroupIds.includes('B') && groups.B.childGroupIds.includes('A')).toBe(false)
+    for (const [id, group] of Object.entries(groups)) {
+      for (const childId of group.childGroupIds) {
+        expect(groups[childId].parentGroupId).toBe(id)
+      }
+    }
+
+    // Duplicating must terminate instead of overflowing the stack.
+    const duplicated = produce(result.project, (draft) => {
+      duplicateEntities(draft, ['A'])
+    })
+    expect(Object.keys(duplicated.groups).length).toBeGreaterThan(2)
+    expect(Object.keys(duplicated.groups).length).toBeLessThan(10)
+  })
+
+  it('adopts children that are only referenced by a child list', () => {
+    const a = makeObject({ id: 'oa', parentGroupId: null })
+    const project = makeProject([a], [makeGroup({ id: 'g', childObjectIds: ['oa'] })])
+    const result = parseProject(project)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.project.objects.oa.parentGroupId).toBe('g')
+    expect(result.project.groups.g.childObjectIds).toEqual(['oa'])
+  })
+
+  it('keeps a valid nested hierarchy untouched', () => {
+    const a = makeObject({ id: 'oa', parentGroupId: 'inner' })
+    const b = makeObject({ id: 'ob', parentGroupId: 'inner' })
+    const project = makeProject(
+      [a, b],
+      [
+        makeGroup({ id: 'inner', parentGroupId: 'outer', childObjectIds: ['oa', 'ob'] }),
+        makeGroup({ id: 'outer', childGroupIds: ['inner'] }),
+      ],
+    )
+    const result = parseProject(project)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.project.groups.inner.childObjectIds).toEqual(['oa', 'ob'])
+    expect(result.project.groups.outer.childGroupIds).toEqual(['inner'])
+    expect(result.project.groups.inner.parentGroupId).toBe('outer')
+  })
+
   it('drops dangling references instead of failing', () => {
     const project = {
       ...makeProject([makeObject({ id: 'a', parentGroupId: 'ghost' })], [
@@ -100,10 +162,20 @@ describe('validation and repair', () => {
     const result = parseProject(project)
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.project.objects.a.parentGroupId).toBeNull()
+    // The dangling parent pointer is dropped; the group that actually lists the
+    // object as a child then adopts it, so both representations agree.
+    expect(result.project.objects.a.parentGroupId).toBe('g')
     expect(result.project.groups.g.childObjectIds).toEqual(['a'])
     expect(result.project.groups.g.childGroupIds).toEqual([])
     expect(result.project.pinnedMeasurements).toEqual([])
+  })
+
+  it('clears a parent pointer that no other group claims', () => {
+    const project = makeProject([makeObject({ id: 'a', parentGroupId: 'ghost' })], [])
+    const result = parseProject(project)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.project.objects.a.parentGroupId).toBeNull()
   })
 })
 

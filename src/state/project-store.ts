@@ -16,7 +16,11 @@ export type ProjectStore = {
 
   /** Apply a document change as exactly one history action. */
   commit: (recipe: DocRecipe) => boolean
-  /** Apply a change that is not part of the document history (settings, unit). */
+  /**
+   * Apply a change that is not part of the document history (settings, display
+   * unit). The recipe is applied to the history snapshots as well, so undo and
+   * redo never revert it.
+   */
   patch: (recipe: DocRecipe) => void
 
   beginTransaction: () => void
@@ -88,7 +92,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const state = get()
     const next = produce(state.doc, recipe)
     if (docsEqual(state.doc, next)) return
-    set({ doc: next })
+    // A patch is not part of the document history, so it must apply to every
+    // point in it too. Otherwise undoing an unrelated action would silently
+    // revert the display unit or a setting along with it.
+    set({
+      doc: next,
+      past: state.past.map((entry) => produce(entry, recipe)),
+      future: state.future.map((entry) => produce(entry, recipe)),
+      txnBase: state.txnBase ? produce(state.txnBase, recipe) : null,
+    })
     scheduleSave(get, set)
   },
 

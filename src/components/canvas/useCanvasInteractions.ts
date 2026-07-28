@@ -113,6 +113,8 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
   const pointersRef = useRef<Map<number, PointerState>>(new Map())
   const pinchRef = useRef<{ distance: number; center: Point } | null>(null)
   const lastTapRef = useRef<{ time: number; x: number; y: number; objectId: string | null } | null>(null)
+  /** Object whose editor opens if the current press ends without movement. */
+  const pendingEditRef = useRef<string | null>(null)
 
   const toLocal = useCallback(
     (clientX: number, clientY: number): Point => {
@@ -134,6 +136,8 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
     const session = sessionRef.current
     if (session?.raf) cancelAnimationFrame(session.raf)
     sessionRef.current = null
+    pendingEditRef.current = null
+    lastTapRef.current = null
     useInteractionStore.getState().endInteraction()
   }, [])
 
@@ -382,6 +386,24 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
     })
   }, [computeFrame])
 
+  /** Double click / double tap: enter a group, or open the object editor. */
+  const openEditor = useCallback((objectId: string) => {
+    const doc = useProjectStore.getState().doc
+    const { activeGroupId, setActiveGroup, setSelection } = useInteractionStore.getState()
+    const entityId = selectableEntityFor(doc, objectId, activeGroupId)
+    if (entityId && doc.groups[entityId]) {
+      setActiveGroup(entityId)
+      const inner = selectableEntityFor(doc, objectId, entityId)
+      if (inner) setSelection([inner], inner)
+      return
+    }
+    const targetId = entityId ?? objectId
+    if (doc.objects[targetId]) {
+      setSelection([targetId], targetId)
+      useUiStore.getState().openObjectDialog({ mode: 'edit', objectId: targetId })
+    }
+  }, [])
+
   const finishSession = useCallback(() => {
     const session = sessionRef.current
     if (!session) return
@@ -392,8 +414,13 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
 
     if (!session.moved) {
       interaction.endInteraction()
+      // A second press that ended without movement is a double click / tap.
+      const pending = pendingEditRef.current
+      pendingEditRef.current = null
+      if (pending) openEditor(pending)
       return
     }
+    pendingEditRef.current = null
 
     if (session.kind === 'move') {
       const frame = (() => {
@@ -431,25 +458,7 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
     }
 
     interaction.endInteraction()
-  }, [computeFrame])
-
-  const openEditor = useCallback((objectId: string) => {
-    const doc = useProjectStore.getState().doc
-    const { activeGroupId, setActiveGroup, setSelection } = useInteractionStore.getState()
-    const entityId = selectableEntityFor(doc, objectId, activeGroupId)
-    if (entityId && doc.groups[entityId]) {
-      // Double-click on a group enters it.
-      setActiveGroup(entityId)
-      const inner = selectableEntityFor(doc, objectId, entityId)
-      if (inner) setSelection([inner], inner)
-      return
-    }
-    const targetId = entityId ?? objectId
-    if (doc.objects[targetId]) {
-      setSelection([targetId], targetId)
-      useUiStore.getState().openObjectDialog({ mode: 'edit', objectId: targetId })
-    }
-  }, [])
+  }, [computeFrame, openEditor])
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
@@ -530,22 +539,21 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
 
       const objectId = objectIdFromEvent(e.target) ?? objectIdAtPoint(e.clientX, e.clientY)
 
-      // Double click / double tap.
+      // Double click / double tap. The editor opens only once the second press
+      // ends without movement, so "tap to select, then press and drag" keeps
+      // working inside the double-tap window.
       const now = Date.now()
       const last = lastTapRef.current
       const isDouble =
         !!last &&
         now - last.time < DOUBLE_TAP_MS &&
         Math.hypot(e.clientX - last.x, e.clientY - last.y) < DOUBLE_TAP_PX &&
-        last.objectId === objectId
+        last.objectId === objectId &&
+        // In multi-select mode a second tap means "toggle", not "edit".
+        !interaction.multiSelectMode
       lastTapRef.current = { time: now, x: e.clientX, y: e.clientY, objectId }
-      if (isDouble) {
-        lastTapRef.current = null
-        if (objectId) {
-          openEditor(objectId)
-          return
-        }
-      }
+      pendingEditRef.current = isDouble && objectId ? objectId : null
+      if (isDouble) lastTapRef.current = null
 
       if (objectId) {
         e.preventDefault()
@@ -601,7 +609,7 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       interaction.setMode('marquee')
       if (!(e.metaKey || e.ctrlKey || interaction.multiSelectMode)) interaction.clearSelection()
     },
-    [cancelSession, openEditor, startMove, startResize, svgRef, toModel],
+    [cancelSession, startMove, startResize, svgRef, toModel],
   )
 
   const onPointerMove = useCallback(
@@ -616,9 +624,10 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
         const distance = Math.hypot(a.x - b.x, a.y - b.y)
         const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
         const prev = pinchRef.current
-        const viewportStore = useViewportStore.getState()
+        // Zoom around the *previous* midpoint, then translate to the new one.
+        // Zooming around the new midpoint would double-count the translation.
         if (prev.distance > 0 && distance > 0) {
-          viewportStore.zoomAt(toLocal(center.x, center.y), distance / prev.distance)
+          useViewportStore.getState().zoomAt(toLocal(prev.center.x, prev.center.y), distance / prev.distance)
         }
         useViewportStore.getState().pan(center.x - prev.center.x, center.y - prev.center.y)
         pinchRef.current = { distance, center }
@@ -631,7 +640,9 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       const dxPx = e.clientX - session.startClient.x
       const dyPx = e.clientY - session.startClient.y
       if (!session.moved && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return
+      // The gesture turned into a drag, so it is no longer a double click/tap.
       session.moved = true
+      pendingEditRef.current = null
       session.shiftKey = e.shiftKey
       session.altKey = e.altKey
 
@@ -675,6 +686,9 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
 
       const session = sessionRef.current
       if (!session || session.pointerId !== e.pointerId) {
+        // No session means the press was handled elsewhere (a measurement, a
+        // second finger); never let a pending double tap survive it.
+        pendingEditRef.current = null
         if (pointersRef.current.size === 0) useInteractionStore.getState().setMode('idle')
         return
       }
