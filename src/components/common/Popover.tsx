@@ -58,8 +58,19 @@ export function Popover({
       const width = panelRef.current?.offsetWidth ?? 260
       const preferred = align === 'right' ? anchor.right - width : anchor.left
       const left = Math.max(MARGIN, Math.min(window.innerWidth - width - MARGIN, preferred))
-      const top = anchor.bottom + GAP
-      setPosition({ top, left, maxHeight: Math.max(160, window.innerHeight - top - MARGIN) })
+
+      // The panel is fixed, so the page can never scroll it into view: it must
+      // always fit the viewport on its own. Flip above the anchor when there is
+      // more room there, and cap the height to whatever that side really has.
+      const spaceBelow = Math.max(0, window.innerHeight - anchor.bottom - GAP - MARGIN)
+      const spaceAbove = Math.max(0, anchor.top - GAP - MARGIN)
+      const needed = panelRef.current?.scrollHeight ?? 0
+      const above = needed > spaceBelow && spaceAbove > spaceBelow
+      const maxHeight = above ? spaceAbove : spaceBelow
+      const top = above
+        ? Math.max(MARGIN, anchor.top - GAP - Math.min(needed || maxHeight, maxHeight))
+        : anchor.bottom + GAP
+      setPosition({ top, left, maxHeight })
     }
     update()
     // A second pass once the panel has its real width.
