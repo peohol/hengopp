@@ -71,6 +71,7 @@ src/geometry/
   groups.ts        nestede grupper, bounding box, nivåoppløsning, sykkelvern
   zorder.ts        lagrekkefølge for blokker, normalisering av z-verdier
   measurements.ts  fire avstander til flatens kanter
+  label-layout.ts  plassering av målelapper langs egen linje uten overlapp
 ```
 
 #### Rutenett med desimale celletall
@@ -101,6 +102,33 @@ bare y. Det gjør det mulig å justere vannrett uten å røre loddrett plasserin
 Fordeling er en egen meny med samme oppbygning: referanse (de ytterste objektene eller flaten),
 hva avstanden måles mellom (kantene eller ankerpunktene), og – ved flatereferanse – om det skal
 være like mye luft ytterst.
+
+#### Målelapper
+
+En målelapp tegnes som et bånd med spiss tupp i hver ende, langs sin egen målelinje, slik at linja
+visuelt løper inn i og ut av lappen. Bakgrunnen er objektets egen fyllfarge gjort lysere
+(`labelBackgroundColor`), med objektets kantfarge som ramme, så det er tydelig hvilket objekt lappen
+hører til selv når flere ligger i samme område.
+
+En lapp kan gli langs sin egen linje uten å miste mening. `layoutLabels()` bruker den ene
+frihetsgraden: hver lapp plasseres etter tur så nær ønsket posisjon som mulig, og den første
+posisjonen som er klar av alle tidligere plasserte vinner. Finnes ingen slik posisjon, velges den med
+minst overlapp. Festede målinger plasseres først og beholder dermed plassen sin.
+
+#### Ankerpunkt
+
+Ankerpunktet snapper **per akse**. Hver akse har sine egne kandidatlinjer (`anchorSnapLines`):
+rutenettlinjene, objektets midtlinje og de to ytterkantene. Én regel gir dermed alle tilfellene:
+
+| Snappet | Resultat |
+| --- | --- |
+| begge akser | et skjæringspunkt (rutenett × rutenett, rutenett × kant, midtlinje × kant …) |
+| én akse | fritt punkt langs én enkelt linje |
+| ingen | helt fri plassering |
+
+Terskelen er i skjermpiksler, men begrenses til en tredel av den minste avstanden mellom to
+nabolinjer (`anchorSnapThreshold`). Uten det ville tette rutenett dekke hele aksen med snapsoner og
+gjøre fri plassering umulig. `Alt` slår av snappingen helt, som ellers i appen.
 
 #### Lagrekkefølge
 
@@ -166,7 +194,7 @@ rulling som siste sikring på svært små skjermer, slik at ingen kontroll blir 
 - **Enhetstester** (`src/tests/`, Vitest): enheter og parsing, rutenett inkl. desimale celler og
   transponering, bounding box og skalering, snapping (terskel, hysterese, prioritet, ekskludering),
   justering (begge akser, begge referanser, begge midtstillingsbaser), fordeling (alle modi),
-  historikk og persistens.
+  plassering av målelapper, ankerets snaplinjer og terskel, historikk og persistens.
 - **Ende-til-ende** (`e2e/`, Playwright): to prosjekter – `desktop` (1440 × 900) og `narrow-touch`
   (390 × 780 med touch). Dekker oppsett, oppretting, flytting, skalering, undo/redo, flervalg,
   justering, fordeling, gruppering, målelinjer, lagrekkefølge, rutenettoppsett, zoom/panorering,

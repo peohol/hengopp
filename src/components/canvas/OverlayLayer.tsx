@@ -6,10 +6,12 @@ import { anchorPoint } from '@/geometry/bounds'
 import { entitiesAtLevel } from '@/geometry/groups'
 import { HANDLES, HANDLE_CURSOR, HANDLE_LABEL, handlePoint } from '@/geometry/resizing'
 import { measurementLine, MEASUREMENT_SIDE_LABEL } from '@/geometry/measurements'
+import { layoutLabels } from '@/geometry/label-layout'
 import type { SnapGuide } from '@/geometry/snapping'
 import { useInteractionStore, type PreviewGeometry } from '@/state/interaction-store'
 import { useProjectStore } from '@/state/project-store'
 import { togglePinnedMeasurement } from '@/state/doc-actions'
+import { deriveBorderColor, labelBackgroundColor } from '@/utils/colors'
 import { formatLength } from '@/utils/units'
 import { isOutsideSurface, previewedEntityBounds, previewedRect, previewedSelectionBounds } from './scene-helpers'
 
@@ -312,9 +314,72 @@ type MeasurementLayerProps = {
   onToggle: (entityId: string, side: MeasurementSide) => void
 }
 
+/** Height of the text band inside a label, and the length of its pointed tips. */
+const LABEL_BAND = 17
+const LABEL_TIP = 12
+/** How far the long edges bow outwards, giving the label its lens shape. */
+const LABEL_BULGE = 1.6
+
+/**
+ * Ribbon with a pointed tip at each end, aligned with the measurement line so
+ * the line visually runs into and out of the label. The waist pinches in at the
+ * tips and the long edges bow out, which makes it obvious at a glance which
+ * line a label belongs to when several of them share the same area.
+ */
+export function bannerPath(
+  cx: number,
+  cy: number,
+  width: number,
+  height: number,
+  axis: 'x' | 'y',
+  tip = LABEL_TIP,
+  bulge = LABEL_BULGE,
+): string {
+  // Leaving the tip along the line (k1) and arriving at the flat edge almost
+  // straight on (k2) is what produces the concave notch at each end.
+  const k1 = tip * 0.72
+  const k2 = tip * 0.22
+  if (axis === 'x') {
+    const x0 = cx - width / 2
+    const x1 = cx + width / 2
+    const xa = x0 + tip
+    const xb = x1 - tip
+    const yt = cy - height / 2
+    const yb = cy + height / 2
+    return [
+      `M${x0} ${cy}`,
+      `C${x0 + k1} ${cy} ${xa - k2} ${yt} ${xa} ${yt}`,
+      `Q${cx} ${yt - bulge * 2} ${xb} ${yt}`,
+      `C${xb + k2} ${yt} ${x1 - k1} ${cy} ${x1} ${cy}`,
+      `C${x1 - k1} ${cy} ${xb + k2} ${yb} ${xb} ${yb}`,
+      `Q${cx} ${yb + bulge * 2} ${xa} ${yb}`,
+      `C${xa - k2} ${yb} ${x0 + k1} ${cy} ${x0} ${cy}`,
+      'Z',
+    ].join(' ')
+  }
+  const y0 = cy - height / 2
+  const y1 = cy + height / 2
+  const ya = y0 + tip
+  const yb = y1 - tip
+  const xl = cx - width / 2
+  const xr = cx + width / 2
+  return [
+    `M${cx} ${y0}`,
+    `C${cx} ${y0 + k1} ${xl} ${ya - k2} ${xl} ${ya}`,
+    `Q${xl - bulge * 2} ${cy} ${xl} ${yb}`,
+    `C${xl} ${yb + k2} ${cx} ${y1 - k1} ${cx} ${y1}`,
+    `C${cx} ${y1 - k1} ${xr} ${yb + k2} ${xr} ${yb}`,
+    `Q${xr + bulge * 2} ${cy} ${xr} ${ya}`,
+    `C${xr} ${ya - k2} ${cx} ${y0 + k1} ${cx} ${y0}`,
+    'Z',
+  ].join(' ')
+}
+
 function MeasurementLayer({ doc, preview, sx, sy, selection, showTemporary, onToggle }: MeasurementLayerProps) {
   const items: { key: string; entityId: string; side: MeasurementSide; pinned: boolean }[] = []
 
+  // Pinned measurements are placed first, so they keep the position the user
+  // chose them for; temporary ones give way around them.
   for (const pin of doc.pinnedMeasurements) {
     items.push({ key: `pin-${pin.id}`, entityId: pin.objectId, side: pin.side, pinned: true })
   }
@@ -326,25 +391,55 @@ function MeasurementLayer({ doc, preview, sx, sy, selection, showTemporary, onTo
     }
   }
 
+  const drawn = items.flatMap((item) => {
+    const bounds = previewedEntityBounds(doc, preview, item.entityId)
+    if (!bounds) return []
+    const line = measurementLine(bounds, doc.surface, item.side)
+    const x1 = sx(line.x1)
+    const y1 = sy(line.y1)
+    const x2 = sx(line.x2)
+    const y2 = sy(line.y2)
+    const label = formatLength(Math.max(0, line.distanceMm), doc.displayUnit)
+    const textW = Math.max(24, label.length * 6.3)
+    const horizontal = item.side === 'left' || item.side === 'right'
+    const width = horizontal ? textW + 2 * LABEL_TIP + 12 : textW + 16
+    const height = horizontal ? LABEL_BAND : LABEL_BAND + 2 * LABEL_TIP
+    const along = horizontal ? Math.abs(x2 - x1) : Math.abs(y2 - y1)
+    const extent = horizontal ? width : height
+    const obj = doc.objects[item.entityId]
+
+    return [
+      {
+        item,
+        label,
+        x1,
+        y1,
+        x2,
+        y2,
+        horizontal,
+        slot: {
+          id: item.key,
+          cx: (x1 + x2) / 2,
+          cy: (y1 + y2) / 2,
+          width,
+          height,
+          axis: (horizontal ? 'x' : 'y') as 'x' | 'y',
+          travel: Math.max(0, (along - extent) / 2 - 3),
+        },
+        fill: obj ? labelBackgroundColor(obj.fillColor) : '#f3f3f1',
+        stroke: obj ? deriveBorderColor(obj.fillColor) : '#5b6068',
+      },
+    ]
+  })
+
+  const placements = layoutLabels(drawn.map((d) => d.slot))
+  const byId = new Map(placements.map((p) => [p.id, p]))
+
   return (
     <g data-testid="measurements">
-      {items.map((item) => {
-        const bounds = previewedEntityBounds(doc, preview, item.entityId)
-        if (!bounds) return null
-        const line = measurementLine(bounds, doc.surface, item.side)
-        const x1 = sx(line.x1)
-        const y1 = sy(line.y1)
-        const x2 = sx(line.x2)
-        const y2 = sy(line.y2)
-        const label = formatLength(Math.max(0, line.distanceMm), doc.displayUnit)
-        const labelW = Math.max(30, label.length * 6.4 + 10)
-        const labelH = 16
-        // Keep the label readable even when the distance is tiny.
-        const midX = (x1 + x2) / 2
-        const midY = (y1 + y2) / 2
-        const horizontal = item.side === 'left' || item.side === 'right'
-        const lx = horizontal ? midX - labelW / 2 : midX + 8
-        const ly = horizontal ? midY - labelH - 4 : midY - labelH / 2
+      {drawn.map((d) => {
+        const { item, label, x1, y1, x2, y2, horizontal, slot } = d
+        const place = byId.get(slot.id) ?? { cx: slot.cx, cy: slot.cy }
 
         return (
           <g
@@ -403,20 +498,17 @@ function MeasurementLayer({ doc, preview, sx, sy, selection, showTemporary, onTo
             />
             {/* The label always wins a click, even on top of an object. */}
             <g data-measurement-label="1">
-              <rect
-                x={lx}
-                y={ly}
-                width={labelW}
-                height={labelH}
-                fill="#ffffff"
-                stroke="#000000"
+              <path
+                d={bannerPath(place.cx, place.cy, slot.width, slot.height, slot.axis)}
+                fill={d.fill}
+                stroke={d.stroke}
                 strokeWidth={1}
-                rx={2}
+                strokeLinejoin="round"
                 data-testid={`measurement-label-${item.side}`}
               />
               <text
-                x={lx + labelW / 2}
-                y={ly + labelH / 2 + 4}
+                x={place.cx}
+                y={place.cy + 4}
                 textAnchor="middle"
                 fontSize={11}
                 fontFamily="inherit"
