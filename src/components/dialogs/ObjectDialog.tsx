@@ -7,7 +7,7 @@ import { GridEditor } from '@/components/common/GridEditor'
 import { DEFAULT_ANCHOR, DEFAULT_OBJECT_FILL, type Anchor, type SceneObject, type Shape } from '@/models/object'
 import { DEFAULT_OBJECT_GRID, type GridDefinition } from '@/models/grid'
 import { constrainAnchor } from '@/geometry/bounds'
-import { gridIntersections, interiorGridLines } from '@/geometry/grid'
+import { anchorSnapLines, anchorSnapThreshold, interiorGridLines } from '@/geometry/grid'
 import { deriveBorderColor } from '@/utils/colors'
 import { newObjectId } from '@/utils/ids'
 import { roundMm } from '@/utils/units'
@@ -264,9 +264,11 @@ function ObjectEditor({ state }: { state: NonNullable<ObjectDialogState> }) {
               onAnchorChange={(anchor) => setDraft({ ...draft, anchor })}
             />
             <p className="hint" style={{ marginTop: 8 }}>
-              Dra ankermarkøren. Den snapper til skjæringspunktene i det interne rutenettet.
-              Posisjonen lagres normalisert (u {draft.anchor.u.toFixed(3)}, v {draft.anchor.v.toFixed(3)}) og
-              beholdes når objektet endrer størrelse.
+              Dra ankermarkøren. Hver akse snapper for seg til rutenettlinjene, objektets midtlinjer og
+              ytterkantene – så du treffer både skjæringspunkter og frie punkter langs én enkelt linje.
+              Hold Alt for å slå av snappingen. Posisjonen lagres normalisert
+              (u {draft.anchor.u.toFixed(3)}, v {draft.anchor.v.toFixed(3)}) og beholdes når objektet endrer
+              størrelse.
             </p>
             <button
               type="button"
@@ -317,10 +319,12 @@ function AnchorPreview({ draft, borderColor, onAnchorChange }: PreviewProps) {
   const y = (size.height - h) / 2
 
   const grid = interiorGridLines(draft.internalGrid, draft.widthMm, draft.heightMm)
-  const intersections = useMemo(
-    () => gridIntersections(draft.internalGrid, draft.widthMm, draft.heightMm),
+  const snapLines = useMemo(
+    () => anchorSnapLines(draft.internalGrid, draft.widthMm, draft.heightMm),
     [draft.internalGrid, draft.widthMm, draft.heightMm],
   )
+  /** Snapped lines under the marker while dragging, in millimetres. */
+  const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null })
 
   const ax = x + draft.anchor.u * w
   const ay = y + draft.anchor.v * h
@@ -333,20 +337,29 @@ function AnchorPreview({ draft, borderColor, onAnchorChange }: PreviewProps) {
     let u = (px - x) / w
     let v = (py - y) / h
 
-    // Snap to internal grid intersections using a screen-space threshold.
-    let best: { u: number; v: number; d: number } | null = null
-    for (const p of intersections) {
-      const gu = draft.widthMm > 0 ? p.x / draft.widthMm : 0
-      const gv = draft.heightMm > 0 ? p.y / draft.heightMm : 0
-      const d = Math.hypot((gu - u) * w, (gv - v) * h)
-      if (d <= ANCHOR_SNAP_PX && (!best || d < best.d)) best = { u: gu, v: gv, d }
+    // Each axis snaps on its own, using a screen-space threshold. Two snapped
+    // axes give an intersection, one lets the anchor slide along a single line.
+    // Alt suspends snapping entirely, exactly as it does on the canvas.
+    const snap = (lines: number[], valueMm: number): number | null => {
+      if (e.altKey) return null
+      const threshold = anchorSnapThreshold(lines, scale, ANCHOR_SNAP_PX)
+      let best: { pos: number; d: number } | null = null
+      for (const pos of lines) {
+        const d = Math.abs(pos - valueMm) * scale
+        if (d <= threshold && (!best || d < best.d)) best = { pos, d }
+      }
+      return best ? best.pos : null
     }
-    if (best) {
-      u = best.u
-      v = best.v
-    }
+    const snappedX = snap(snapLines.x, u * draft.widthMm)
+    const snappedY = snap(snapLines.y, v * draft.heightMm)
+    if (snappedX !== null) u = snappedX / draft.widthMm
+    if (snappedY !== null) v = snappedY / draft.heightMm
+
+    setGuides({ x: snappedX, y: snappedY })
     onAnchorChange(constrainAnchor(draft.shape, u, v))
   }
+
+  const endDrag = () => setGuides({ x: null, y: null })
 
   return (
     <div ref={wrapRef}>
@@ -366,6 +379,9 @@ function AnchorPreview({ draft, borderColor, onAnchorChange }: PreviewProps) {
           if (e.buttons === 0) return
           handlePointer(e)
         }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onPointerLeave={endDrag}
       >
         {draft.shape === 'ellipse' ? (
           <ellipse cx={x + w / 2} cy={y + h / 2} rx={w / 2} ry={h / 2} fill={draft.fillColor} stroke={borderColor} strokeWidth={1} />
@@ -383,6 +399,28 @@ function AnchorPreview({ draft, borderColor, onAnchorChange }: PreviewProps) {
             ))}
           </g>
         ) : null}
+
+        {/* Guides for the lines the anchor is currently snapped to. */}
+        <g pointerEvents="none" stroke="#2f6fd0" strokeWidth={1}>
+          {guides.x !== null ? (
+            <line
+              x1={x + (guides.x / draft.widthMm) * w}
+              y1={y - 6}
+              x2={x + (guides.x / draft.widthMm) * w}
+              y2={y + h + 6}
+              data-testid="anchor-guide-x"
+            />
+          ) : null}
+          {guides.y !== null ? (
+            <line
+              x1={x - 6}
+              y1={y + (guides.y / draft.heightMm) * h}
+              x2={x + w + 6}
+              y2={y + (guides.y / draft.heightMm) * h}
+              data-testid="anchor-guide-y"
+            />
+          ) : null}
+        </g>
 
         <g data-testid="anchor-marker" style={{ cursor: 'grab' }}>
           <circle cx={ax} cy={ay} r={12} fill="transparent" />

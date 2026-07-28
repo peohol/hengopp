@@ -1,7 +1,6 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { IconButton } from '@/components/common/IconButton'
 import { Segmented } from '@/components/common/Segmented'
-import { Popover } from '@/components/common/Popover'
 import { SurfacePopover } from '@/components/popovers/SurfacePopover'
 import { GridPopover } from '@/components/popovers/GridPopover'
 import { StepPopover } from '@/components/popovers/PrecisionPopover'
@@ -26,6 +25,16 @@ import { zoomPercent } from '@/geometry/coordinates'
 import { MOD_LABEL } from '@/utils/keyboard'
 import type { Unit } from '@/models/project'
 
+/** One toolbar section: heading on top, controls underneath. */
+function ToolGroup({ label, tone, children }: { label: string; tone: string; children: ReactNode }) {
+  return (
+    <section className={`tgroup tgroup--${tone}`} aria-label={label}>
+      <span className="tgroup__label">{label}</span>
+      <div className="tgroup__row">{children}</div>
+    </section>
+  )
+}
+
 export function Toolbar() {
   const doc = useProjectStore((s) => s.doc)
   const patch = useProjectStore((s) => s.patch)
@@ -43,11 +52,7 @@ export function Toolbar() {
   return (
     <header className="toolbar" data-testid="toolbar">
       <div className="toolbar__inner">
-        <div className="toolbar__brand">
-          <span>Hengopp</span>
-        </div>
-
-        <div className="tgroup">
+        <ToolGroup label="Prosjekt" tone="project">
           <ProjectMenu />
           <Segmented<Unit>
             label="Enhet"
@@ -62,10 +67,9 @@ export function Toolbar() {
           />
           <SurfacePopover />
           <GridPopover />
-        </div>
+        </ToolGroup>
 
-        <div className="tgroup">
-          <span className="tgroup__label">Objekter</span>
+        <ToolGroup label="Objekter" tone="objects">
           <IconButton
             icon="newObject"
             label="Nytt objekt"
@@ -91,10 +95,9 @@ export function Toolbar() {
             data-testid="delete"
             onClick={deleteSelection}
           />
-        </div>
+        </ToolGroup>
 
-        <div className="tgroup">
-          <span className="tgroup__label">Presisjon</span>
+        <ToolGroup label="Presisjon" tone="precision">
           <StepPopover />
           <IconButton
             icon="snapGrid"
@@ -122,12 +125,14 @@ export function Toolbar() {
             data-testid="multi-select"
             onClick={() => setMultiSelectMode(!multiSelectMode)}
           />
-        </div>
+        </ToolGroup>
 
-        <div className="tgroup">
-          <span className="tgroup__label">Organisering</span>
+        <ToolGroup label="Plassering" tone="placement">
           <AlignPopover />
           <DistributePopover />
+        </ToolGroup>
+
+        <ToolGroup label="Grupper" tone="groups">
           <IconButton
             icon="group"
             label="Grupper"
@@ -144,60 +149,44 @@ export function Toolbar() {
             data-testid="ungroup"
             onClick={ungroupSelection}
           />
+        </ToolGroup>
+
+        <ToolGroup label="Rekkefølge" tone="order">
+          <IconButton
+            icon="toBack"
+            label="Flytt helt bakerst"
+            hint="Flere valgte objekter flyttes samlet"
+            disabled={!hasSelection}
+            data-testid="z-back"
+            onClick={() => reorderSelection('back')}
+          />
+          <IconButton
+            icon="backward"
+            label="Flytt ett nivå bak"
+            hint="Flere valgte objekter flyttes samlet"
+            disabled={!hasSelection}
+            data-testid="z-backward"
+            onClick={() => reorderSelection('backward')}
+          />
           <IconButton
             icon="forward"
             label="Flytt ett nivå frem"
+            hint="Flere valgte objekter flyttes samlet"
             disabled={!hasSelection}
             data-testid="z-forward"
             onClick={() => reorderSelection('forward')}
           />
           <IconButton
-            icon="backward"
-            label="Flytt ett nivå bak"
+            icon="toFront"
+            label="Flytt helt fremst"
+            hint="Flere valgte objekter flyttes samlet"
             disabled={!hasSelection}
-            data-testid="z-backward"
-            onClick={() => reorderSelection('backward')}
+            data-testid="z-front"
+            onClick={() => reorderSelection('front')}
           />
-          <Popover
-            icon="layers"
-            label="Lagrekkefølge"
-            hint="Helt fremst og helt bakerst"
-            disabled={!hasSelection}
-            title="Lagrekkefølge"
-            testId="z-popover"
-          >
-            {(close) => (
-              <div className="stack">
-                <button
-                  type="button"
-                  className="btn"
-                  data-testid="z-front"
-                  onClick={() => {
-                    reorderSelection('front')
-                    close()
-                  }}
-                >
-                  Flytt helt fremst
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  data-testid="z-back"
-                  onClick={() => {
-                    reorderSelection('back')
-                    close()
-                  }}
-                >
-                  Flytt helt bakerst
-                </button>
-                <p className="hint">Et flervalg flyttes som én sammenhengende blokk.</p>
-              </div>
-            )}
-          </Popover>
-        </div>
+        </ToolGroup>
 
-        <div className="tgroup">
-          <span className="tgroup__label">Historikk</span>
+        <ToolGroup label="Historikk" tone="history">
           <IconButton
             icon="undo"
             label="Angre"
@@ -214,10 +203,9 @@ export function Toolbar() {
             data-testid="redo"
             onClick={redo}
           />
-        </div>
+        </ToolGroup>
 
-        <div className="tgroup">
-          <span className="tgroup__label">Visning</span>
+        <ToolGroup label="Visning" tone="view">
           <IconButton
             icon="zoomOut"
             label="Zoom ut"
@@ -243,7 +231,7 @@ export function Toolbar() {
             data-testid="help"
             onClick={() => useUiStore.getState().setHelpOpen(true)}
           />
-        </div>
+        </ToolGroup>
       </div>
     </header>
   )
@@ -260,10 +248,9 @@ function ZoomField({ percent }: { percent: number }) {
       <div className="field__row">
         <input
           id="zoom-percent"
-          className=""
           type="text"
           inputMode="numeric"
-          style={{ width: 52, textAlign: 'right' }}
+          style={{ width: 38, textAlign: 'right' }}
           value={display}
           data-testid="zoom-percent"
           onChange={(e) => setText(e.target.value.replace(/[^\d]/g, ''))}

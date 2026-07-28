@@ -3,6 +3,7 @@ import {
   contrastLineColor,
   contrastRatio,
   deriveBorderColor,
+  labelBackgroundColor,
   parseHex,
   relativeLuminance,
   rgbToOklch,
@@ -38,6 +39,41 @@ describe('border colours', () => {
 
   it('falls back safely for unparseable input', () => {
     expect(deriveBorderColor('not-a-colour')).toBe('#333333')
+  })
+})
+
+describe('label background colours', () => {
+  const fills = ['#c9d7e6', '#ffffff', '#f5c0ad', '#2f6fd0', '#101010', '#00a86b', '#b3261e', '#f4dc9a']
+
+  it('always keeps black text comfortably readable', () => {
+    for (const fill of fills) {
+      expect(contrastRatio('#000000', labelBackgroundColor(fill))).toBeGreaterThanOrEqual(9)
+    }
+  })
+
+  it('is never darker than the fill it comes from', () => {
+    for (const fill of fills) {
+      const label = labelBackgroundColor(fill)
+      expect(relativeLuminance(label)).toBeGreaterThanOrEqual(relativeLuminance(fill) - 1e-9)
+    }
+  })
+
+  it('keeps the hue of the fill so the label stays tied to its object', () => {
+    for (const fill of ['#c9d7e6', '#f5c0ad', '#2f6fd0', '#00a86b']) {
+      const fillHue = rgbToOklch(parseHex(fill)!).h
+      const labelHue = rgbToOklch(parseHex(labelBackgroundColor(fill))!).h
+      const delta = Math.abs(((labelHue - fillHue + 540) % 360) - 180)
+      expect(delta).toBeLessThan(12)
+    }
+  })
+
+  it('distinguishes different fills from each other', () => {
+    const backgrounds = fills.map(labelBackgroundColor)
+    expect(new Set(backgrounds).size).toBeGreaterThanOrEqual(fills.length - 1)
+  })
+
+  it('falls back to a neutral tint for an unparseable colour', () => {
+    expect(labelBackgroundColor('not-a-colour')).toBe('#f6f6f4')
   })
 })
 

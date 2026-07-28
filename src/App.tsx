@@ -75,7 +75,7 @@ export function App() {
   return (
     <div className="app">
       <Toolbar />
-      <main className="workspace-wrapper" style={{ position: 'relative', flex: '1 1 auto', minHeight: 0, display: 'flex' }}>
+      <main className="workspace-wrapper">
         <Canvas />
         <GroupBreadcrumb />
         <CanvasStatus />

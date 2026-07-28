@@ -91,6 +91,30 @@ export function deriveBorderColor(fillHex: string): string {
   return toHex(oklchToRgb({ l: clamp01(target), c: chroma, h: oklch.h }))
 }
 
+/**
+ * Background for a label that carries black text, derived from an object's
+ * fill: same hue, a little lighter and less saturated. The hue keeps the label
+ * visibly tied to its object; the lightness guarantees the text stays readable
+ * even when the fill itself is dark or strongly coloured.
+ */
+export function labelBackgroundColor(fillHex: string): string {
+  const rgb = parseHex(fillHex)
+  if (!rgb) return '#f6f6f4'
+  const { l, c, h } = rgbToOklch(rgb)
+  const chroma = Math.min(c, 0.07)
+  // Always a little lighter than the fill, and never below the level where
+  // black text reads well — a white fill simply stays white.
+  let lightness = Math.min(1, Math.max(l + 0.06, 0.9))
+  let hex = toHex(oklchToRgb({ l: lightness, c: chroma, h }))
+  // Extreme hues can still land below the contrast we want; nudge up until they
+  // clear it rather than trusting the lightness alone.
+  for (let i = 0; i < 12 && lightness < 1 && contrastRatio('#000000', hex) < 9; i += 1) {
+    lightness = clamp01(lightness + 0.01)
+    hex = toHex(oklchToRgb({ l: lightness, c: chroma, h }))
+  }
+  return hex
+}
+
 /** WCAG relative luminance of an sRGB colour. */
 export function relativeLuminance(hex: string): number {
   const rgb = parseHex(hex)

@@ -1,5 +1,5 @@
 import type { HengoppProject } from '@/models/project'
-import type { AlignH, AlignV } from '@/geometry/alignment'
+import type { AlignOptions } from '@/geometry/alignment'
 import { computeAlignment } from '@/geometry/alignment'
 import { computeDistribution, minimumEntities, type DistributeOptions } from '@/geometry/distribution'
 import { entitiesAtLevel, entitiesBounds, objectIdsOfEntities, parentOf } from '@/geometry/groups'
@@ -152,11 +152,11 @@ export function duplicateSelection(): void {
   if (created.length > 0) setSelection(created, created[created.length - 1])
 }
 
-export function alignSelection(h: AlignH, v: AlignV): void {
+export function alignSelection(opts: Omit<AlignOptions, 'keyId'>): void {
   const { selection, keyId } = interaction()
-  if (selection.length < 2 || !keyId) return
+  if (selection.length === 0) return
   const doc = project().doc
-  const deltas = computeAlignment(doc, selection, keyId, h, v)
+  const deltas = computeAlignment(doc, selection, doc.surface, { ...opts, keyId })
   if (deltas.length === 0) return
   project().commit((draft) => applyDeltas(draft, deltas))
 }
@@ -167,7 +167,7 @@ export function distributeSelection(opts: DistributeOptions, confirmedOverlap = 
   if (selection.length < minimumEntities(opts)) return false
   const result = computeDistribution(doc, selection, doc.surface, opts)
   if (result.warning && !confirmedOverlap && /overlappe/.test(result.warning)) {
-    ui().notify('warning', `${result.warning} Klikk «Fordel» en gang til for å gjennomføre.`)
+    ui().notify('warning', `${result.warning} Klikk samme knapp en gang til for å gjennomføre.`)
     return false
   }
   if (result.deltas.length === 0) return true

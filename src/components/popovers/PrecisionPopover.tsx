@@ -43,6 +43,7 @@ export function StepPopover() {
             testId="step-custom"
             onCommit={(v) => patch((draft) => void (draft.settings.movementStepMm = v))}
           />
+          <hr className="msep" />
           <label className="checkbox">
             <input
               type="checkbox"
@@ -52,6 +53,7 @@ export function StepPopover() {
             />
             <span>Bruk steget også ved fri flytting med mus og finger</span>
           </label>
+          <hr className="msep" />
           <p className="hint">
             Endringssteget brukes av piltaster og pluss/minus. Snapping er en egen mekanisme – som standard
             er flytting kontinuerlig med snapping.

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Popover } from '@/components/common/Popover'
 import { Segmented } from '@/components/common/Segmented'
+import { Icon } from '@/components/icons/Icon'
 import {
   minimumEntities,
   type DistributeReference,
@@ -21,95 +22,114 @@ export function DistributePopover() {
   const disabled = selection.length < minimum
 
   const run = (axis: 'x' | 'y') => {
-    const key = `${axis}-${reference}-${target}-${outerGap}`
+    // The selection is part of the key: a pending confirmation must never carry
+    // over to a different set of objects.
+    const key = `${axis}-${reference}-${target}-${outerGap}-${selection.join(',')}`
     const confirmed = pendingRef.current === key
     const done = distributeSelection({ axis, reference, target, outerGap }, confirmed)
     pendingRef.current = done ? null : key
   }
 
+  const reset = () => {
+    pendingRef.current = null
+  }
+
   return (
     <Popover
       icon="distribute"
-      label="Fordel"
-      hint="Fordel objekter med like avstander"
+      label="Fordeling"
+      hint="Gi objektene like avstander"
       showLabel
-      disabled={selection.length < 2}
-      title="Fordel"
+      disabled={selection.length === 0}
+      title="Fordeling"
       testId="distribute-popover"
     >
       {() => (
-        <div className="stack" style={{ minWidth: 300 }}>
+        <div className="stack" style={{ width: 300 }}>
           <Segmented
             label="Referanse"
+            stacked
             value={reference}
             testId="distribute-reference"
             options={[
-              { value: 'selection', label: 'Ytterste valgte' },
-              { value: 'surface', label: 'Hele flaten' },
+              { value: 'selection', label: 'De ytterste objektene' },
+              { value: 'surface', label: 'Flaten' },
             ]}
             onChange={(v) => {
               setReference(v)
-              pendingRef.current = null
+              reset()
             }}
           />
+
+          <hr className="msep" />
+
           <Segmented
-            label="Måltype"
+            label="Juster avstand mellom …"
+            stacked
             value={target}
             testId="distribute-target"
             options={[
-              { value: 'edges', label: 'Kanter' },
-              { value: 'anchors', label: 'Ankerpunkt' },
+              { value: 'edges', label: 'Kantene' },
+              { value: 'anchors', label: 'Ankerpunktene' },
             ]}
             onChange={(v) => {
               setTarget(v)
-              pendingRef.current = null
+              reset()
             }}
           />
+
           {reference === 'surface' ? (
-            <Segmented
-              label="Luft ved flatens kanter"
-              value={outerGap ? 'yes' : 'no'}
-              testId="distribute-outer"
-              options={[
-                { value: 'yes', label: 'Lik ytterluft' },
-                { value: 'no', label: 'Uten ytterluft' },
-              ]}
-              onChange={(v) => {
-                setOuterGap(v === 'yes')
-                pendingRef.current = null
-              }}
-            />
+            <>
+              <hr className="msep" />
+              <Segmented
+                label="Luft ved flatens kanter"
+                stacked
+                value={outerGap ? 'yes' : 'no'}
+                testId="distribute-outer"
+                options={[
+                  { value: 'yes', label: 'Lik ytterluft' },
+                  { value: 'no', label: 'Uten ytterluft' },
+                ]}
+                onChange={(v) => {
+                  setOuterGap(v === 'yes')
+                  reset()
+                }}
+              />
+            </>
           ) : null}
 
-          <div className="row">
+          <hr className="msep" />
+
+          <div className="stack" style={{ gap: 6 }}>
             <button
               type="button"
-              className="btn"
+              className="btn btn--action"
               disabled={disabled}
               data-testid="distribute-horizontal"
               onClick={() => run('x')}
             >
-              Fordel horisontalt
+              <Icon name="distributeH" />
+              <span>Fordel vannrett</span>
             </button>
             <button
               type="button"
-              className="btn"
+              className="btn btn--action"
               disabled={disabled}
               data-testid="distribute-vertical"
               onClick={() => run('y')}
             >
-              Fordel vertikalt
+              <Icon name="distributeV" />
+              <span>Fordel loddrett</span>
             </button>
           </div>
-          {disabled ? (
-            <p className="hint">Velg minst {minimum} enheter for denne fordelingen.</p>
-          ) : (
-            <p className="hint">
-              {reference === 'selection'
-                ? 'De to ytterste valgte enhetene står stille. Resten fordeles jevnt mellom dem.'
-                : 'Enhetene fordeles i forhold til hele flaten.'}
-            </p>
-          )}
+
+          <p className="hint">
+            {disabled
+              ? `Velg minst ${minimum} objekter for denne fordelingen.`
+              : reference === 'selection'
+                ? 'De to ytterste objektene står stille. Resten fordeles jevnt mellom dem.'
+                : 'Objektene fordeles jevnt over hele flaten.'}
+          </p>
         </div>
       )}
     </Popover>

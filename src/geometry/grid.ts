@@ -98,18 +98,46 @@ export function interiorGridLines(grid: GridDefinition, widthMm: number, heightM
   }
 }
 
-/** Intersection points of the grid, used for anchor snapping inside an object. */
-export function gridIntersections(
+/**
+ * Lines the anchor marker snaps to, per axis: the internal grid, the object's
+ * centre line and its two outer edges.
+ *
+ * Each axis is snapped on its own, so one rule covers every case: two snapped
+ * axes land on an intersection (grid × grid, grid × edge, centre × edge …), one
+ * snapped axis slides freely along a single line, and none is free placement.
+ */
+export function anchorSnapLines(
   grid: GridDefinition,
   widthMm: number,
   heightMm: number,
-): { x: number; y: number }[] {
+): { x: number[]; y: number[] } {
   const { vertical, horizontal } = gridLines(grid, widthMm, heightMm)
-  const xs = vertical.length ? vertical : [0, widthMm]
-  const ys = horizontal.length ? horizontal : [0, heightMm]
-  const out: { x: number; y: number }[] = []
-  for (const x of xs) for (const y of ys) out.push({ x, y })
-  return out
+  const axis = (lines: number[], length: number) => {
+    if (!Number.isFinite(length) || length <= 0) return []
+    const all = [0, length / 2, length, ...lines]
+      .filter((v) => Number.isFinite(v) && v >= 0 && v <= length)
+      .map(roundMm)
+      .sort((a, b) => a - b)
+    return dedupe(all)
+  }
+  return { x: axis(vertical, widthMm), y: axis(horizontal, heightMm) }
+}
+
+/**
+ * Screen-space snap threshold for one axis of anchor snapping.
+ *
+ * A fixed threshold would swallow the whole axis when the lines sit close
+ * together — every position would be inside some snap zone and free placement
+ * would be impossible. Capping the threshold at a third of the tightest gap
+ * always leaves a band between neighbours where the anchor moves freely.
+ */
+export function anchorSnapThreshold(linesMm: number[], scale: number, maxPx: number): number {
+  let minGapPx = Infinity
+  for (let i = 1; i < linesMm.length; i += 1) {
+    minGapPx = Math.min(minGapPx, (linesMm[i] - linesMm[i - 1]) * scale)
+  }
+  if (!Number.isFinite(minGapPx) || minGapPx <= 0) return maxPx
+  return Math.min(maxPx, minGapPx / 3)
 }
 
 /** Transposing a grid is meaningless when it would produce the same result. */

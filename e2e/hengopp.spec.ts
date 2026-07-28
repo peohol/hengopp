@@ -176,16 +176,42 @@ test.describe('Hengopp', () => {
     expect(keyId).toBe(aObject.id)
 
     const historyBefore = await historyLength(page)
+    const bBefore = await objectByName(page, 'B')
     await page.getByTestId('align-popover').click()
-    await page.getByTestId('align-top-left').click()
+    await page.getByTestId('align-reference-key').click()
 
+    await page.getByTestId('align-left').click()
+    const bAfterX = await objectByName(page, 'B')
+    expect(bAfterX.xMm).toBeCloseTo(aObject.xMm, 3)
+    // Horizontal alignment must leave every y-position untouched.
+    expect(bAfterX.yMm).toBeCloseTo(bBefore.yMm, 3)
+
+    await page.getByTestId('align-top').click()
     const a2 = await objectByName(page, 'A')
     const b2 = await objectByName(page, 'B')
-    // The key object did not move; B aligned to it.
+    // The key object never moved; B aligned to it on both axes.
     expect(a2.xMm).toBeCloseTo(aObject.xMm, 3)
+    expect(a2.yMm).toBeCloseTo(aObject.yMm, 3)
     expect(b2.xMm).toBeCloseTo(a2.xMm, 3)
     expect(b2.yMm).toBeCloseTo(a2.yMm, 3)
-    expect(await historyLength(page)).toBe(historyBefore + 1)
+    expect(await historyLength(page)).toBe(historyBefore + 2)
+  })
+
+  test('8b: aligning against the surface centres a single object', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page)
+    await disableSnapping(page)
+    await createObject(page, { name: 'A', widthCm: 40, heightCm: 40 })
+    await clickModel(page, await centerOf(page, 'A'))
+
+    const doc = await getDoc(page)
+    await page.getByTestId('align-popover').click()
+    await page.getByTestId('align-center-x').click()
+    await page.getByTestId('align-bottom').click()
+
+    const a = await objectByName(page, 'A')
+    expect(a.xMm + a.widthMm / 2).toBeCloseTo(doc.surface.widthMm / 2, 3)
+    expect(a.yMm + a.heightMm).toBeCloseTo(doc.surface.heightMm, 3)
   })
 
   test('9: distribute three objects', async ({ page }) => {
@@ -289,6 +315,116 @@ test.describe('Hengopp', () => {
     expect(doc.pinnedMeasurements).toHaveLength(0)
     await page.getByTestId('undo').click()
     expect((await getDoc(page)).pinnedMeasurements).toHaveLength(1)
+  })
+
+  test('11b: labels sit on their line, carry the object colour and step aside', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page)
+    await createObject(page, { name: 'Bilde', widthCm: 60, heightCm: 40 })
+    await clickModel(page, await centerOf(page, 'Bilde'))
+
+    // The label is the pointed banner drawn straight on its own line.
+    const label = page.getByTestId('measurement-label-left')
+    await expect(label).toHaveJSProperty('tagName', 'path')
+    const line = await page.locator('[data-testid="measurement-left"] line').nth(1).boundingBox()
+    const labelBox = await label.boundingBox()
+    const labelCy = labelBox!.y + labelBox!.height / 2
+    expect(Math.abs(labelCy - (line!.y + line!.height / 2))).toBeLessThan(2)
+
+    // Its background is a lighter version of the object's own fill.
+    const fill = await label.getAttribute('fill')
+    const objectFill = await page.locator('[data-object-id]').first().getAttribute('fill')
+    expect(fill).not.toBe(objectFill)
+    const luminance = (hex: string) => {
+      const v = (i: number) => parseInt(hex.slice(i, i + 2), 16) / 255
+      const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+      return 0.2126 * lin(v(1)) + 0.7152 * lin(v(3)) + 0.0722 * lin(v(5))
+    }
+    expect(luminance(fill!)).toBeGreaterThan(luminance(objectFill!))
+
+    // Two left measurements that want the exact same spot must not stack.
+    await createObject(page, { name: 'Speil', widthCm: 30, heightCm: 30 })
+    for (const [field, value] of [
+      ['prop-x', '120'],
+      ['prop-y', '85'],
+    ] as const) {
+      await page.getByTestId(field).fill(value)
+      await page.getByTestId(field).press('Enter')
+    }
+    // Both objects now share a vertical centre, so both left measurements run
+    // along the same line and prefer the very same midpoint. Pinning them
+    // through the document keeps the setup independent of overlapping hit areas.
+    await page.evaluate(() => {
+      window.__hengopp!.project.getState().commit((draft) => {
+        for (const object of Object.values(draft.objects)) {
+          draft.pinnedMeasurements.push({ id: `m-${object.id}`, objectId: object.id, side: 'left' })
+        }
+      })
+    })
+    await page.getByTestId('canvas').click({ position: { x: 5, y: 5 } })
+
+    const boxes = await page.getByTestId('measurement-label-left').all()
+    expect(boxes).toHaveLength(2)
+    const [a, b] = await Promise.all(boxes.map((l) => l.boundingBox()))
+    const overlapX = Math.min(a!.x + a!.width, b!.x + b!.width) - Math.max(a!.x, b!.x)
+    const overlapY = Math.min(a!.y + a!.height, b!.y + b!.height) - Math.max(a!.y, b!.y)
+    expect(overlapX <= 0 || overlapY <= 0).toBe(true)
+  })
+
+  test('11c: the anchor snaps to each axis on its own', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page)
+    await createObject(page, { name: 'Bilde', widthCm: 60, heightCm: 40 })
+    await page.getByTestId('edit-object').click()
+
+    // A 3 × 3 grid: neither centre line coincides with a grid line.
+    await page.getByTestId('object-grid-preset-custom').click()
+    for (const [field, value] of [
+      ['object-grid-cols', '3'],
+      ['object-grid-rows', '3'],
+    ] as const) {
+      await page.getByTestId(field).fill(value)
+      await page.getByTestId(field).press('Enter')
+    }
+
+    const rect = (await page.locator('[data-testid="object-preview"] rect').boundingBox())!
+    const dragTo = async (u: number, v: number) => {
+      await page.mouse.move(rect.x + rect.width * 0.5, rect.y + rect.height * 0.5)
+      await page.mouse.down()
+      await page.mouse.move(rect.x + rect.width * u, rect.y + rect.height * v, { steps: 6 })
+      await page.mouse.up()
+    }
+    const anchor = async () => {
+      await page.getByTestId('object-save').click()
+      const doc = await getDoc(page)
+      const object = Object.values(doc.objects).find((o) => o.name === 'Bilde')!
+      await page.getByTestId('edit-object').click()
+      return (object as unknown as { anchor: { u: number; v: number } }).anchor
+    }
+
+    // A vertical grid line with a freely placed y: one axis snapped, one not.
+    await dragTo(1 / 3 + 0.004, 0.43)
+    let a = await anchor()
+    expect(a.u).toBeCloseTo(1 / 3, 3)
+    expect(Math.abs(a.v - 0.5)).toBeGreaterThan(0.02)
+
+    // The object's own centre, which no grid line passes through.
+    await dragTo(0.5 + 0.004, 0.5 - 0.004)
+    a = await anchor()
+    expect(a.u).toBeCloseTo(0.5, 3)
+    expect(a.v).toBeCloseTo(0.5, 3)
+
+    // A grid line crossing the bounding box edge.
+    await dragTo(2 / 3 - 0.004, 0.012)
+    a = await anchor()
+    expect(a.u).toBeCloseTo(2 / 3, 3)
+    expect(a.v).toBeCloseTo(0, 3)
+
+    // The centre line crossing the bottom edge.
+    await dragTo(0.5 - 0.004, 0.99)
+    a = await anchor()
+    expect(a.u).toBeCloseTo(0.5, 3)
+    expect(a.v).toBeCloseTo(1, 3)
   })
 
   test('13: zoom and pan never change model values or the toolbar', async ({ page }) => {
@@ -402,7 +538,6 @@ test.describe('Hengopp', () => {
     expect(doc.objects[fram.id].zIndex).toBeLessThan(doc.objects[bak.id].zIndex)
     expect(await historyLength(page)).toBe(historyBefore + 1)
 
-    await page.getByTestId('z-popover').click()
     await page.getByTestId('z-front').click()
     doc = await getDoc(page)
     expect(doc.objects[fram.id].zIndex).toBeGreaterThan(doc.objects[bak.id].zIndex)

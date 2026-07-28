@@ -100,11 +100,78 @@ const ICONS = {
       <rect x="7" y="11" width="12" height="9" rx="1.4" fill={ICON_FILLS.blue} />
     </>
   ),
-  layers: (
+  toFront: (
     <>
-      <rect x="3" y="13.5" width="18" height="6.5" rx="1.3" fill={ICON_FILLS.grey} />
-      <rect x="4.5" y="8.5" width="15" height="6.5" rx="1.3" fill={ICON_FILLS.blue} />
-      <rect x="6" y="3.5" width="12" height="6.5" rx="1.3" fill={ICON_FILLS.coral} />
+      <path d="M3 2.6h18" />
+      <rect x="4" y="12" width="12" height="8.5" rx="1.4" fill={ICON_FILLS.grey} />
+      <rect x="8" y="5.5" width="12" height="8.5" rx="1.4" fill={ICON_FILLS.coral} />
+    </>
+  ),
+  toBack: (
+    <>
+      <path d="M3 21.4h18" />
+      <rect x="8" y="3.5" width="12" height="8.5" rx="1.4" fill={ICON_FILLS.grey} />
+      <rect x="4" y="10" width="12" height="8.5" rx="1.4" fill={ICON_FILLS.blue} />
+    </>
+  ),
+  alignLeft: (
+    <>
+      <path d="M3.5 3v18" />
+      <rect x="6.5" y="5.5" width="13" height="5" rx="1" fill={ICON_FILLS.blue} />
+      <rect x="6.5" y="13.5" width="8.5" height="5" rx="1" fill={ICON_FILLS.blue} fillOpacity=".7" />
+    </>
+  ),
+  alignCenterX: (
+    <>
+      <rect x="5.5" y="5.5" width="13" height="5" rx="1" fill={ICON_FILLS.blue} />
+      <rect x="7.75" y="13.5" width="8.5" height="5" rx="1" fill={ICON_FILLS.blue} fillOpacity=".7" />
+      <path d="M12 3v18" strokeDasharray="2.5 2.5" />
+    </>
+  ),
+  alignRight: (
+    <>
+      <path d="M20.5 3v18" />
+      <rect x="4.5" y="5.5" width="13" height="5" rx="1" fill={ICON_FILLS.blue} />
+      <rect x="9" y="13.5" width="8.5" height="5" rx="1" fill={ICON_FILLS.blue} fillOpacity=".7" />
+    </>
+  ),
+  alignTop: (
+    <>
+      <path d="M3 3.5h18" />
+      <rect x="5.5" y="6.5" width="5" height="13" rx="1" fill={ICON_FILLS.blue} />
+      <rect x="13.5" y="6.5" width="5" height="8.5" rx="1" fill={ICON_FILLS.blue} fillOpacity=".7" />
+    </>
+  ),
+  alignMiddleY: (
+    <>
+      <rect x="5.5" y="5.5" width="5" height="13" rx="1" fill={ICON_FILLS.blue} />
+      <rect x="13.5" y="7.75" width="5" height="8.5" rx="1" fill={ICON_FILLS.blue} fillOpacity=".7" />
+      <path d="M3 12h18" strokeDasharray="2.5 2.5" />
+    </>
+  ),
+  alignBottom: (
+    <>
+      <path d="M3 20.5h18" />
+      <rect x="5.5" y="4.5" width="5" height="13" rx="1" fill={ICON_FILLS.blue} />
+      <rect x="13.5" y="9" width="5" height="8.5" rx="1" fill={ICON_FILLS.blue} fillOpacity=".7" />
+    </>
+  ),
+  distributeH: (
+    <>
+      <rect x="2.5" y="4" width="4" height="7" rx="1" fill={ICON_FILLS.green} />
+      <rect x="10" y="4" width="4" height="7" rx="1" fill={ICON_FILLS.green} />
+      <rect x="17.5" y="4" width="4" height="7" rx="1" fill={ICON_FILLS.green} />
+      <path d="M4 17.5h16" />
+      <path d="m7 14.5-3 3 3 3M17 14.5l3 3-3 3" fill="none" />
+    </>
+  ),
+  distributeV: (
+    <>
+      <rect x="4" y="2.5" width="7" height="4" rx="1" fill={ICON_FILLS.green} />
+      <rect x="4" y="10" width="7" height="4" rx="1" fill={ICON_FILLS.green} />
+      <rect x="4" y="17.5" width="7" height="4" rx="1" fill={ICON_FILLS.green} />
+      <path d="M17.5 4v16" />
+      <path d="m14.5 7 3-3 3 3M14.5 17l3 3 3-3" fill="none" />
     </>
   ),
   anchor: (
