@@ -5,6 +5,7 @@ import { ColorField } from '@/components/common/ColorField'
 import { Segmented } from '@/components/common/Segmented'
 import type { Unit } from '@/models/project'
 import { DEFAULT_SURFACE } from '@/models/project'
+import { setSurfaceSize } from '@/state/doc-actions'
 import { useProjectStore } from '@/state/project-store'
 import { useViewportStore } from '@/state/viewport-store'
 import { useUiStore } from '@/state/ui-store'
@@ -26,8 +27,7 @@ export function SetupDialog() {
   const finish = () => {
     patch((draft) => {
       draft.displayUnit = unit
-      draft.surface.widthMm = widthMm
-      draft.surface.heightMm = heightMm
+      setSurfaceSize(draft, { widthMm, heightMm })
       draft.surface.color = color
       draft.isDraftSetup = false
     })

@@ -276,6 +276,43 @@ const ICONS = {
       <path d="m14.2 6.6 3.2 3.2" />
     </>
   ),
+  lock: (
+    <>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="1.6" fill={ICON_FILLS.yellow} />
+      <path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9" fill="none" />
+      <circle cx="12" cy="15.5" r="1.5" fill="currentColor" stroke="none" />
+    </>
+  ),
+  unlock: (
+    <>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="1.6" fill={ICON_FILLS.grey} />
+      <path d="M8 10.5V7.6a4 4 0 0 1 7.6-1.7" fill="none" />
+      <circle cx="12" cy="15.5" r="1.5" fill="currentColor" stroke="none" />
+    </>
+  ),
+  measureTool: (
+    <>
+      <path d="M3.5 20.5 20.5 3.5" />
+      <circle cx="4.6" cy="19.4" r="2" fill={ICON_FILLS.mint} />
+      <circle cx="19.4" cy="4.6" r="2" fill={ICON_FILLS.mint} />
+      <path d="M20.5 3.5v9M20.5 3.5h-9" strokeDasharray="2.5 2.5" opacity=".7" />
+    </>
+  ),
+  guideLine: (
+    <>
+      <rect x="3" y="3.5" width="18" height="17" rx="1.5" fill={ICON_FILLS.lilac} />
+      <path d="M3 12h18" strokeDasharray="1 3" strokeLinecap="round" />
+      <path d="M12 3.5v17" strokeDasharray="1 3" strokeLinecap="round" opacity=".55" />
+    </>
+  ),
+  rulerOrigin: (
+    <>
+      <rect x="2.8" y="3" width="18.4" height="6" rx="1" fill={ICON_FILLS.grey} />
+      <path d="M7 9V6.2M12 9V5M17 9V6.2" opacity=".7" />
+      <path d="M12 11.5V21M6.5 16.5h11" strokeDasharray="2.5 2.5" opacity=".6" />
+      <circle cx="12" cy="11.5" r="2.4" fill={ICON_FILLS.coral} />
+    </>
+  ),
   close: <path d="M6 6l12 12M18 6 6 18" />,
   check: <path d="m5 12.5 4.6 4.5L19 7" />,
   chevronDown: <path d="m6.5 9.5 5.5 5.5 5.5-5.5" fill="none" />,

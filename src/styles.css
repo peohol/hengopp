@@ -18,6 +18,9 @@
   --radius-lg: 10px;
   --control-h: 28px;
   --touch: 44px;
+  /* Ruler thickness. .canvas-frame also sets this inline from RULER_SIZE, which
+     branches on the same media query — the two can never disagree. */
+  --ruler: 26px;
   --shadow-pop: 0 6px 24px rgba(20, 22, 26, 0.14), 0 1px 2px rgba(20, 22, 26, 0.1);
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -31,6 +34,15 @@
   --sect-order: #f7f2e6;
   --sect-history: #e9f2f2;
   --sect-view: #eff0f3;
+  --sect-measure: #e7f3f0;
+}
+
+/* Touch screens are small; the ruler gives some of that space back. Mirrors
+   RULER_SIZE_COARSE in Rulers.tsx. */
+@media (pointer: coarse) {
+  :root {
+    --ruler: 20px;
+  }
 }
 
 * {
@@ -163,6 +175,9 @@ button {
 }
 .tgroup--view {
   background: var(--sect-view);
+}
+.tgroup--measure {
+  background: var(--sect-measure);
 }
 
 .btn {
@@ -682,12 +697,111 @@ button {
   overflow: hidden;
 }
 
-.workspace {
-  position: relative;
+/* Canvas + four rulers. Each ruler shares a grid track with the canvas, so a
+   pixel offset means the same thing in both. */
+.canvas-frame {
+  display: grid;
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
+  grid-template-columns: var(--ruler) minmax(0, 1fr) var(--ruler);
+  grid-template-rows: var(--ruler) minmax(0, 1fr) var(--ruler);
+  grid-template-areas:
+    '.    top     .'
+    'left canvas  right'
+    '.    bottom  .';
+  background: var(--toolbar-bg);
+}
+
+.workspace {
+  grid-area: canvas;
+  position: relative;
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
   background: var(--bg);
+}
+
+/* ---------------------------------------------------------------- Rulers */
+
+.ruler {
+  position: relative;
+  overflow: hidden;
+  background: var(--panel);
+  color: var(--ink-muted);
+  /* The rulers place guide lines; the browser must not pan or zoom them. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: crosshair;
+}
+
+.ruler--top {
+  grid-area: top;
+  border-bottom: 1px solid var(--line);
+}
+.ruler--bottom {
+  grid-area: bottom;
+  border-top: 1px solid var(--line);
+}
+.ruler--left {
+  grid-area: left;
+  border-right: 1px solid var(--line);
+}
+.ruler--right {
+  grid-area: right;
+  border-left: 1px solid var(--line);
+}
+
+.ruler__svg {
+  display: block;
+}
+
+/* The stretch of ruler that covers the surface, so its extent is readable. */
+.ruler__surface {
+  fill: var(--panel-raised);
+}
+
+.ruler__tick {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.ruler__tick--major {
+  stroke: var(--ink-muted);
+}
+
+.ruler__labels text {
+  fill: var(--ink-muted);
+  font-size: 9.5px;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+.ruler__preview line {
+  stroke: #7b4fd6;
+  stroke-width: 2;
+}
+
+/* The zero point. A flag rather than a tick, since the tick beside it also
+   reads "0" — and it is what a drag inside the ruler moves. */
+.ruler__origin path {
+  fill: #b3261e;
+}
+
+.ruler__origin line {
+  stroke: #b3261e;
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.ruler__origin.is-dragging path,
+.ruler__origin.is-dragging line {
+  opacity: 1;
+}
+
+.ruler:hover {
+  background: var(--panel-raised);
 }
 
 .canvas {
@@ -708,6 +822,10 @@ button {
   cursor: grab;
 }
 
+.canvas.is-measuring {
+  cursor: crosshair;
+}
+
 .canvas__object {
   cursor: default;
 }
@@ -716,10 +834,45 @@ button {
   cursor: move;
 }
 
+/* A locked object can be focused and edited, but not dragged. */
+.canvas__object.is-locked {
+  cursor: default;
+}
+
+/* Lock badge: readable at rest, unmistakable — and clickable — under the
+   pointer, which is what unlocks the object again. */
+.lock-badge {
+  opacity: 0.75;
+}
+
+.lock-badge:hover {
+  opacity: 1;
+  cursor: pointer;
+}
+
+.guide {
+  transition: opacity 90ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide {
+    transition: none;
+  }
+}
+
+/* Opacity slider in the object dialog. */
+.slider {
+  flex: 1 1 120px;
+  min-width: 90px;
+  accent-color: var(--accent);
+  height: var(--control-h);
+}
+
+/* The floating chrome sits inside the canvas, clear of the rulers. */
 .breadcrumb {
   position: absolute;
-  left: 10px;
-  top: 10px;
+  left: calc(var(--ruler) + 10px);
+  top: calc(var(--ruler) + 10px);
   z-index: 5;
   display: flex;
   align-items: center;
@@ -750,8 +903,8 @@ button {
 
 .status {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
+  right: calc(var(--ruler) + 10px);
+  bottom: calc(var(--ruler) + 10px);
   z-index: 5;
   display: flex;
   gap: 6px;
@@ -772,7 +925,7 @@ button {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 14px;
+  bottom: calc(var(--ruler) + 14px);
   z-index: 40;
   display: flex;
   flex-direction: column;

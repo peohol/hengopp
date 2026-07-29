@@ -11,13 +11,19 @@ export type DocSnapshot = {
       widthMm: number
       heightMm: number
       fillColor: string
+      fillOpacity: number
+      locked: boolean
       parentGroupId: string | null
       zIndex: number
     }
   >
   groups: Record<string, { id: string; name: string; childObjectIds: string[]; childGroupIds: string[] }>
   pinnedMeasurements: { id: string; objectId: string; side: string }[]
+  guides: { id: string; axis: 'x' | 'y'; posMm: number; locked: boolean }[]
+  measureLines: { id: string; x1Mm: number; y1Mm: number; x2Mm: number; y2Mm: number; pinned: boolean }[]
   surface: { widthMm: number; heightMm: number; color: string }
+  surfaceGrid: { enabled: boolean; cols: number; rows: number }
+  rulerOrigin: { xMm: number; yMm: number }
   displayUnit: string
 }
 
@@ -131,6 +137,21 @@ export async function clickModel(
 /** Wait for the debounced autosave to reach localStorage. */
 export async function waitForSave(page: Page): Promise<void> {
   await page.waitForTimeout(350)
+}
+
+/** Press a ruler at a model position along its axis, which creates a guide. */
+export async function clickRuler(
+  page: Page,
+  side: 'top' | 'bottom' | 'left' | 'right',
+  positionMm: number,
+): Promise<void> {
+  const horizontal = side === 'top' || side === 'bottom'
+  const box = await page.getByTestId(`ruler-${side}`).boundingBox()
+  if (!box) throw new Error(`Ruler ${side} not found`)
+  const p = await toScreen(page, horizontal ? positionMm : 0, horizontal ? 0 : positionMm)
+  await page.mouse.move(horizontal ? p.x : box.x + box.width / 2, horizontal ? box.y + box.height / 2 : p.y)
+  await page.mouse.down()
+  await page.mouse.up()
 }
 
 /** Turn snapping off so drag assertions are exact. */

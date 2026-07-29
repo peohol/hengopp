@@ -25,10 +25,11 @@ export const gridDefinitionSchema = z.object({
 
 export type GridDefinition = z.infer<typeof gridDefinitionSchema>
 
+/** New projects start with a visible 2 × 2 surface grid. */
 export const DEFAULT_SURFACE_GRID: GridDefinition = {
-  enabled: false,
+  enabled: true,
   mode: 'cells',
-  cols: 3,
+  cols: 2,
   rows: 2,
   hAlign: 'start',
   vAlign: 'start',

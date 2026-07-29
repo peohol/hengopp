@@ -1,6 +1,7 @@
 import { Popover } from '@/components/common/Popover'
 import { LengthField } from '@/components/common/NumberField'
 import { ColorField } from '@/components/common/ColorField'
+import { setSurfaceSize } from '@/state/doc-actions'
 import { useProjectStore } from '@/state/project-store'
 
 export function SurfacePopover() {
@@ -26,7 +27,7 @@ export function SurfacePopover() {
               stepMm={doc.settings.movementStepMm}
               positiveOnly
               testId="surface-width"
-              onCommit={(v) => commit((draft) => void (draft.surface.widthMm = v))}
+              onCommit={(v) => commit((draft) => setSurfaceSize(draft, { widthMm: v }))}
             />
             <LengthField
               label="Høyde"
@@ -35,7 +36,7 @@ export function SurfacePopover() {
               stepMm={doc.settings.movementStepMm}
               positiveOnly
               testId="surface-height"
-              onCommit={(v) => commit((draft) => void (draft.surface.heightMm = v))}
+              onCommit={(v) => commit((draft) => setSurfaceSize(draft, { heightMm: v }))}
             />
           </div>
           <hr className="msep" />
@@ -48,7 +49,8 @@ export function SurfacePopover() {
           <hr className="msep" />
           <p className="hint">
             Flaten er grunnflaten alle objekter er relative til. Objekter flyttes ikke automatisk hvis
-            flaten gjøres mindre – de markeres i stedet som utenfor flaten.
+            flaten gjøres mindre – de markeres i stedet som utenfor flaten. Skillelinjer følger derimot
+            med kanten inn, siden en linje utenfor flaten verken ville vært synlig eller mulig å ta tak i.
           </p>
         </div>
       )}

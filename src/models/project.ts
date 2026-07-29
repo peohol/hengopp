@@ -2,8 +2,10 @@ import { z } from 'zod'
 import { gridDefinitionSchema, DEFAULT_SURFACE_GRID } from './grid'
 import { sceneObjectSchema } from './object'
 import { objectGroupSchema } from './group'
+import { guideLineSchema } from './guide'
+import { measureLineSchema } from './measure'
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export const unitSchema = z.enum(['cm', 'mm'])
 export type Unit = z.infer<typeof unitSchema>
@@ -25,6 +27,20 @@ export const pinnedMeasurementSchema = z.object({
   side: measurementSideSchema,
 })
 export type PinnedMeasurement = z.infer<typeof pinnedMeasurementSchema>
+
+/**
+ * Zero point of the rulers, in model millimetres. It only changes what the
+ * rulers read out — never the geometry, and never the coordinates in the menu,
+ * which stay relative to the surface. Unlike a guide it may sit outside the
+ * surface, since measuring from a point off the wall is a normal thing to want.
+ */
+export const rulerOriginSchema = z.object({
+  xMm: z.number().finite(),
+  yMm: z.number().finite(),
+})
+export type RulerOrigin = z.infer<typeof rulerOriginSchema>
+
+export const DEFAULT_RULER_ORIGIN: RulerOrigin = { xMm: 0, yMm: 0 }
 
 export const settingsSchema = z.object({
   movementStepMm: z.number().finite().positive(),
@@ -49,6 +65,11 @@ export const projectSchema = z.object({
   objects: z.record(sceneObjectSchema),
   groups: z.record(objectGroupSchema),
   pinnedMeasurements: z.array(pinnedMeasurementSchema),
+  /** User-placed guide lines other objects can snap to. */
+  guides: z.array(guideLineSchema).default([]),
+  /** Free measuring lines drawn with the measure tool. */
+  measureLines: z.array(measureLineSchema).default([]),
+  rulerOrigin: rulerOriginSchema.default(DEFAULT_RULER_ORIGIN),
   settings: settingsSchema,
   /** True until the user has completed the first-run surface setup. */
   isDraftSetup: z.boolean().default(false),
@@ -73,6 +94,9 @@ export function createEmptyProject(id: string): HengoppProject {
     objects: {},
     groups: {},
     pinnedMeasurements: [],
+    guides: [],
+    measureLines: [],
+    rulerOrigin: { ...DEFAULT_RULER_ORIGIN },
     settings: {
       movementStepMm: 10,
       snapToGrid: true,

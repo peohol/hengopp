@@ -1,7 +1,10 @@
 import type { HengoppProject, MeasurementSide } from '@/models/project'
 import type { SceneObject } from '@/models/object'
 import type { ObjectGroup } from '@/models/group'
+import type { GuideAxis, GuideLine } from '@/models/guide'
+import type { MeasureLine } from '@/models/measure'
 import type { Rect } from '@/geometry/bounds'
+import { clampGuidePos, surfaceExtentFor } from '@/geometry/guides'
 import {
   attachToParent,
   descendantObjectIds,
@@ -14,7 +17,7 @@ import {
 } from '@/geometry/groups'
 import { mapRectBetweenBounds } from '@/geometry/resizing'
 import { applyOrder, computeReorder, nextZIndex, orderedObjectIds, type ZOrderOp } from '@/geometry/zorder'
-import { newGroupId, newMeasurementId, newObjectId } from '@/utils/ids'
+import { newGroupId, newGuideId, newMeasureLineId, newMeasurementId, newObjectId } from '@/utils/ids'
 import { roundMm } from '@/utils/units'
 
 export type Delta = { id: string; dx: number; dy: number }
@@ -145,6 +148,131 @@ export function togglePinnedMeasurement(
   const index = draft.pinnedMeasurements.findIndex((m) => m.objectId === entityId && m.side === side)
   if (index >= 0) draft.pinnedMeasurements.splice(index, 1)
   else draft.pinnedMeasurements.push({ id: newMeasurementId(), objectId: entityId, side })
+}
+
+/* ------------------------------------------------------------------ Guides */
+
+/** Add a guide line, clamped to the surface. Returns the new id. */
+export function addGuide(draft: HengoppProject, axis: GuideAxis, posMm: number): string {
+  const guide: GuideLine = {
+    id: newGuideId(),
+    axis,
+    posMm: clampGuidePos(posMm, surfaceExtentFor(draft.surface, axis)),
+    locked: false,
+  }
+  draft.guides.push(guide)
+  return guide.id
+}
+
+/** Move a guide by dragging. A locked guide stays put — that is the lock. */
+export function moveGuide(draft: HengoppProject, id: string, posMm: number): void {
+  const guide = draft.guides.find((g) => g.id === id)
+  if (!guide || guide.locked) return
+  guide.posMm = clampGuidePos(posMm, surfaceExtentFor(draft.surface, guide.axis))
+}
+
+/**
+ * Set a guide's position from a typed value. The lock guards against stray
+ * drags on the canvas, not against a number the user deliberately entered.
+ */
+export function setGuidePos(draft: HengoppProject, id: string, posMm: number): void {
+  const guide = draft.guides.find((g) => g.id === id)
+  if (!guide) return
+  guide.posMm = clampGuidePos(posMm, surfaceExtentFor(draft.surface, guide.axis))
+}
+
+export function toggleGuideLock(draft: HengoppProject, id: string): void {
+  const guide = draft.guides.find((g) => g.id === id)
+  if (guide) guide.locked = !guide.locked
+}
+
+export function removeGuide(draft: HengoppProject, id: string): void {
+  draft.guides = draft.guides.filter((g) => g.id !== id)
+}
+
+/** Pull every guide back inside the surface. */
+export function clampGuidesToSurface(draft: HengoppProject): void {
+  for (const guide of draft.guides) {
+    guide.posMm = clampGuidePos(guide.posMm, surfaceExtentFor(draft.surface, guide.axis))
+  }
+}
+
+/**
+ * Resize the surface. Objects are deliberately left where they are and flagged
+ * as outside instead, but a guide has nowhere to be outside the surface: it
+ * would be invisible and unreachable, so it follows the edge in.
+ */
+export function setSurfaceSize(
+  draft: HengoppProject,
+  size: { widthMm?: number; heightMm?: number },
+): void {
+  if (size.widthMm !== undefined) draft.surface.widthMm = size.widthMm
+  if (size.heightMm !== undefined) draft.surface.heightMm = size.heightMm
+  clampGuidesToSurface(draft)
+}
+
+/* ---------------------------------------------------------- Measure lines */
+
+export function addMeasureLine(draft: HengoppProject, line: Omit<MeasureLine, 'id'>): string {
+  const id = newMeasureLineId()
+  draft.measureLines.push({ ...line, id })
+  return id
+}
+
+/** Pinning keeps a measuring line's labels visible without hovering. */
+export function toggleMeasurePinned(draft: HengoppProject, id: string): void {
+  const line = draft.measureLines.find((l) => l.id === id)
+  if (line) line.pinned = !line.pinned
+}
+
+export type MeasureEnd = 'start' | 'end'
+
+/** Move one end of an existing measuring line. */
+export function setMeasureEndpoint(
+  draft: HengoppProject,
+  id: string,
+  end: MeasureEnd,
+  point: { x: number; y: number },
+): void {
+  const line = draft.measureLines.find((l) => l.id === id)
+  if (!line) return
+  if (end === 'start') {
+    line.x1Mm = roundMm(point.x)
+    line.y1Mm = roundMm(point.y)
+  } else {
+    line.x2Mm = roundMm(point.x)
+    line.y2Mm = roundMm(point.y)
+  }
+}
+
+/* ------------------------------------------------------------ Ruler origin */
+
+/**
+ * Move the zero point of the rulers. It is deliberately not clamped to the
+ * surface: measuring from a point off the wall (a doorway, a floor line) is a
+ * normal thing to want.
+ */
+export function setRulerOrigin(draft: HengoppProject, origin: { xMm?: number; yMm?: number }): void {
+  if (origin.xMm !== undefined) draft.rulerOrigin.xMm = roundMm(origin.xMm)
+  if (origin.yMm !== undefined) draft.rulerOrigin.yMm = roundMm(origin.yMm)
+}
+
+export function resetRulerOrigin(draft: HengoppProject): void {
+  draft.rulerOrigin = { xMm: 0, yMm: 0 }
+}
+
+export function removeMeasureLine(draft: HengoppProject, id: string): void {
+  draft.measureLines = draft.measureLines.filter((l) => l.id !== id)
+}
+
+/* ----------------------------------------------------------------- Locking */
+
+/** Lock or unlock every object covered by the given entities. */
+export function setEntitiesLocked(draft: HengoppProject, entityIds: string[], locked: boolean): void {
+  for (const objId of objectIdsOfEntities(draft, entityIds)) {
+    const obj = draft.objects[objId]
+    if (obj) obj.locked = locked
+  }
 }
 
 export function copyName(name: string): string {

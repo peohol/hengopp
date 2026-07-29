@@ -47,7 +47,7 @@ Tilstanden er delt i fire uavhengige lag slik at pointermove aldri rører dokume
 | Lag | Fil | Innhold |
 | --- | --- | --- |
 | Dokument + historikk | `src/state/project-store.ts` | `HengoppProject`, `past`/`future`, transaksjons-API |
-| Interaksjon | `src/state/interaction-store.ts` | selection, nøkkelobjekt, gruppenivå, hover, drag-preview, snapguider, marquee |
+| Interaksjon | `src/state/interaction-store.ts` | selection, nøkkelobjekt, gruppenivå, hover, verktøy, drag-preview, snapguider, marquee, skillelinje- og måleutkast |
 | Viewport | `src/state/viewport-store.ts` | scale/offset, «100 %»-referanse, zoom og panorering |
 | UI | `src/state/ui-store.ts` | modaler, bekreftelser, ikke-blokkerende varsler |
 
@@ -68,10 +68,13 @@ src/geometry/
   alignment.ts     énakset justering mot flaten eller nøkkelobjektet
   distribution.ts  fordeling mot utvalg eller flate, kant- eller ankerbasert
   resizing.ts      åtte håndtak, ratio-lås med drivende dimensjon, skalering fra sentrum, mapping av barn
-  groups.ts        nestede grupper, bounding box, nivåoppløsning, sykkelvern
+  groups.ts        nestede grupper, bounding box, nivåoppløsning, låsing, sykkelvern
   zorder.ts        lagrekkefølge for blokker, normalisering av z-verdier
   measurements.ts  fire avstander til flatens kanter
   label-layout.ts  plassering av målelapper langs egen linje uten overlapp
+  ruler.ts         pene linjalintervaller (1-2-5-stigen), delstreker og nullpunkt
+  guides.ts        skillelinjer: begrensning, stegkvantisering, snapping, kant-referanse
+  measure-lines.ts målelinjer: vater/lodd/diagonal, vektorkomponenter, treffdeteksjon
 ```
 
 #### Rutenett med desimale celletall
@@ -155,9 +158,125 @@ for dette – det er alltid oppførselen.
 Snappingmotoren får et geometrisk snapshot og returnerer `{ deltaXMm, deltaYMm, xGuide, yGuide }`.
 X og Y beregnes uavhengig. Kandidaten med minst skjermavstand vinner; ved praktisk talt lik
 avstand brukes en semantisk prioritet (anker↔anker → lik kanttype → sentrum↔sentrum → anker↔kant
-→ kant↔kant → flaterutenett). Prioritet overstyrer aldri en merkbart nærmere kandidat. En aktiv
-snap beholdes til avstanden overstiger frigjøringsterskelen (hysterese), slik at guiden ikke
-flimrer. `Alt` deaktiverer snapping midlertidig.
+→ kant↔kant → skillelinje → flaterutenett). Prioritet overstyrer aldri en merkbart nærmere
+kandidat. En aktiv snap beholdes til avstanden overstiger frigjøringsterskelen (hysterese), slik
+at guiden ikke flimrer. `Alt` deaktiverer snapping midlertidig.
+
+`snapPoint()` bruker samme motor på et fritt punkt i stedet for et rektangel. Det er det
+målelinjene bruker: én akse om gangen gir hjørner (kant × kant), håndtak på kantmidten
+(kant × midtlinje) og ankerpunkter (anker × anker) uten noen egen kodesti.
+
+#### Låsing
+
+Et låst objekt kan ikke flyttes, skaleres eller få endret avstandsvisning **på lerretet**, og blir
+aldri med på justering, fordeling, seleksjonsrektangel eller flervalg. Alt annet er som før: navn,
+farge, opasitet, rutenett, ankerpunkt, rekkefølge, duplisering og sletting virker, og en verdi du
+skriver inn i toppmenyen eller redigeringsdialogen brukes uansett – låsen beskytter mot uhell med
+musa, ikke mot bevisst redigering.
+
+Objektet kan fortsatt fokuseres med et direkte klikk og redigeres med dobbeltklikk. Andre objekter
+snapper som vanlig til det. Ved hovering vises en hengelås i objektets sentrum (75 % opasitet,
+100 % under pekeren); et klikk på den låser opp igjen.
+
+En gruppe regnes som låst så snart ett av objektene i den er det – ellers ville en flytting av
+gruppen ha flyttet det låste objektet indirekte. Av samme grunn forsvinner skaleringshåndtakene så
+snart **ett** objekt i utvalget er låst: en skalering kartlegger hele den omsluttende boksen, så det
+finnes ingen måte å skalere resten uten å dra det låste objektet med seg.
+
+`Ctrl/Cmd + A` hopper over låste objekter, akkurat som seleksjonsrektangelet og `Ctrl`-klikk gjør.
+Alle tre er masseutvalg, og en lås skal holde objektet utenfor dem.
+
+#### Linjaler
+
+Linjalene ligger over, under og på hver side av lerretet, i samme rutenettspor som selve lerretet.
+En pikselposisjon i en linjal betyr derfor nøyaktig det samme som i lerretet, uten ekstra regning.
+
+Intervallet velges som det minste «pene» trinnet på 1-2-5-stigen – regnet i visningsenheten, ikke i
+millimeter – som gir minst 68 px mellom to merkede streker. Det gir runde tall (1, 2, 5, 10, 20, 50
+cm …) ved alle zoomnivåer, aldri 13,7 cm. Hvert hovedtrinn deles i fem delstreker (fire når trinnet
+starter på 2), slik at også delstrekene lander på runde verdier.
+
+#### Nullpunktet
+
+Nullpunktet flyttes ved å trykke og dra inne i en linjal; et trykk som ikke beveger seg er fortsatt
+et klikk og lager en skillelinje, akkurat som lerretet skiller mellom tapp og dragning. De vannrette
+linjalene deler x-nullpunkt, de loddrette deler y.
+
+Nullpunktet snapper til alt annet gjør det – flatens kanter og midtlinjer, objektenes kanter,
+midtlinjer og ankerpunkter, skillelinjer, endene på målelinjer og rutenettet – men klemmes aldri inn
+til flaten: å måle fra et punkt utenfor veggen (en dørkarm, en gulvlinje) er en helt vanlig ting å
+ville. `Alt` slår av snappingen som ellers.
+
+Strekene legges ut **relativt til nullpunktet**, ikke til flaten. Dermed er null alltid en merket
+strek, og alle etikettene er runde tall uansett hvor skjevt nullpunktet står – står det på 13,7 cm,
+er nabostrekene fortsatt −10, 0 og 10. Merk at nullpunktet bare endrer hva linjalene leser av:
+geometrien og X/Y-feltene i menyen er fortsatt relative til flaten. «Nullstill linjalene» i
+Måling-seksjonen setter begge aksene tilbake.
+
+#### Skillelinjer
+
+En skillelinje er en brukerplassert linje over hele flaten som andre objekter kan snappe til.
+Aksenavnet følger samme konvensjon som snapguidene: `x` er en loddrett linje ved `posMm` på
+x-aksen, `y` en vannrett linje ved `posMm` på y-aksen.
+
+| Handling | Resultat |
+| --- | --- |
+| Hovre en linjal | Forhåndsviser linjen tvers over lerretet |
+| Klikk i en linjal | Oppretter linjen der du klikker |
+| Dra en linje | Flytter den med endringssteget, og snapper til objekter, andre linjer og rutenettet (`Alt` gir fri plassering) |
+| Klikk på en linje | Låser posisjonen (og full opasitet); klikk igjen for å låse opp |
+| Dobbeltklikk en linje | Nøyaktig posisjon, målt fra toppen/bunnen eller venstre/høyre kant |
+
+Linjene tegnes prikkete, der flaterutenettet er stiplet, så de aldri forveksles. De ligger på
+55 % opasitet og går til 100 % ved hovering, ved dragning og når de er låst.
+
+Snapping vinner over stegkvantiseringen: uten det ville en linje aldri kunne legges nøyaktig på en
+objektkant som ikke tilfeldigvis er et multiplum av steget.
+
+Gjøres flaten mindre, følger skillelinjene med kanten inn (`setSurfaceSize()`). Objekter blir
+liggende og markeres som utenfor flaten i stedet, men en skillelinje utenfor flaten ville verken
+vært synlig eller mulig å ta tak i igjen.
+
+Dobbeltklikk endrer aldri låsen. Det første klikket i paret slår den av eller på, og det andre
+setter den tilbake igjen før popoveren åpnes – ellers ville et dobbeltklikk for å skrive inn en
+posisjon ha låst linjen på veien inn.
+
+**På touch** finnes ingen hovering. Derfor har hver linje et alltid synlig håndtak nær starten av
+linjen, treffsonen er 26 px i stedet for 13, og et tapp i en linjal oppretter linjen med én gang –
+forhåndsvisningen rekker aldri å bli et eget steg.
+
+#### Målelinjer
+
+Målelinjeverktøyet (`M`) bytter ut klikk-og-dra på lerretet med å tegne en fri målelinje. Begge
+endepunktene snapper til objektenes håndtak, ankerpunkt og kanter, til skillelinjer, til endene på
+andre målelinjer og til rutenettet – `Alt` gir fri måling, `Shift` låser til vannrett eller loddrett.
+
+| Linjen er | Vises ved hovering |
+| --- | --- |
+| i vater | bare den vannrette lengden, på selve linjen |
+| i lodd | bare den loddrette lengden, på selve linjen |
+| diagonal | linjens egen lengde, pluss x- og y-komponentene som stiplede ben med hvert sitt mål |
+
+Klassifiseringen gjøres i millimeter, ikke i piksler, så den endrer seg aldri med zoomnivået.
+
+**Verktøyet tegner, pekeren redigerer.** Så snart en linje er tegnet, går lerretet tilbake til
+valgverktøyet – det er der den nye linjen kan brukes til noe. Mens måleverktøyet er aktivt eier det
+hvert trykk på lerretet, også et som lander på en skillelinje eller på en eksisterende målelinje:
+det er nettopp der en ny måling ofte starter.
+
+Med vanlig peker gjelder følgende for en målelinje:
+
+| Handling | Resultat |
+| --- | --- |
+| Hovre linjen | Viser lengdemålene (og vektorkomponentene for en diagonal) |
+| Klikk på linjen | Fester målene så de blir stående; klikk igjen for å løsne |
+| Dra i en ende | Flytter den enden, med samme snapping linjen ble tegnet med |
+| `Ctrl`/`Cmd` + klikk | Sletter linjen. Mens tasten holdes, erstattes målene av et kryss midt på linjen |
+
+Når en ende snapper til et objekt, tegnes objektets åtte håndtak og ankerpunktet opp, slik at de
+andre stedene enden kunne ha landet er synlige mens man sikter. Endene er håndtak på linje med
+skaleringshåndtakene og vinner over det som ligger under dem; selve linjen viker derimot for et
+objekt, så den stjeler aldri et klikk som var ment for objektet.
 
 #### Endringssteg
 
@@ -187,7 +306,11 @@ uansett hvilken vei pekeren beveger seg.
 
 ### Persistens
 
-Dokumentformatet er versjonert (`schemaVersion`) og valideres med Zod ved innlasting og import.
+Dokumentformatet er versjonert (`schemaVersion`, nå 2) og valideres med Zod ved innlasting og import.
+`migrateProject()` løfter et dokument helt fram til gjeldende versjon, ikke bare ett steg. Objekter
+skrevet før opasitet fantes forblir helt ugjennomsiktige – nye objekter starter derimot på 80 %.
+Skillelinjer utenfor flaten klemmes inn i stedet for å forkastes, så linjen beholdes; linjalenes
+nullpunkt klemmes derimot aldri.
 Lagringsnøkkel: `hengopp.project.v1`, med `hengopp.project.v1.backup` som siste gyldige
 sikkerhetskopi. Ugyldige eller skadde data krasjer aldri appen – de gir et varsel og et nytt
 prosjekt, eventuelt gjenopprettet fra sikkerhetskopien. `migrateProject()` løfter eldre
@@ -207,19 +330,26 @@ handlinger, aldri under `pointermove`.
 | `Ctrl/Cmd + D` | Dupliser |
 | `Ctrl/Cmd + G` / `Ctrl/Cmd + Shift + G` | Grupper / løs opp |
 | `Ctrl/Cmd + A` | Velg alle på aktivt gruppenivå |
-| `Escape` | Avbryt draoperasjon, lukk dialog, gå ett gruppenivå ut |
+| `Ctrl/Cmd + L` | Lås / lås opp utvalget |
+| `M` / `V` | Målelinjeverktøyet / valgverktøyet |
+| `Escape` | Forlat verktøy, avbryt draoperasjon, lukk dialog, gå ett gruppenivå ut |
 | `Mellomrom` + dra, midtre museknapp + dra | Panorer |
 | Musehjul | Zoom rundt pekeren (`Ctrl/Cmd` + hjul, altså pinch på styreflate, zoomer også lerretet) |
 
 Under flytting: `Shift` låser til dominerende akse, `Alt` slår av snapping.
 Under skalering: `Shift` beholder forholdet – den retningen du drar mest i, styrer og endres i hele
 steg – og `Alt` skalerer fra sentrum (og slår av snapping).
+Under måling: `Shift` låser til vannrett eller loddrett, `Alt` gir fri måling.
 
 ## Touch
 
-Alle desktopfunksjoner som er avhengige av modifikatortaster har touch-alternativer:
+Alle desktopfunksjoner som er avhengige av modifikatortaster eller hovering har touch-alternativer:
 flervalgsmodus, snapping av/på og gruppehandlinger ligger i toppmenyen, håndtakene har 26 px
 trefflate, dobbelttapp åpner redigering, pinch zoomer og to fingre panorerer.
+
+Der hovering var det eneste hintet, er det erstattet av noe som alltid er synlig: skillelinjene har
+et permanent håndtak og 26 px trefflate, og et tapp i en linjal oppretter linjen direkte. Linjalene
+er også litt tynnere (20 px) på touch, siden skjermplassen er knappere.
 
 ## Zoom: bare lerretet, aldri siden
 
@@ -240,8 +370,9 @@ avbrytes av siden.
 
 ## Toppmeny og rulling
 
-Toppmenyen er delt i seksjoner (Prosjekt, Objekter, Presisjon, Plassering, Grupper, Rekkefølge,
-Historikk, Visning). Hver seksjon har overskriften over innholdet og sin egen dempede bakgrunnsfarge.
+Toppmenyen er delt i seksjoner (Prosjekt, Objekter, Presisjon, Plassering, Måling, Grupper,
+Rekkefølge, Historikk, Visning). Hver seksjon har overskriften over innholdet og sin egen dempede
+bakgrunnsfarge.
 
 Siden ruller aldri: `html`, `body`, `#root` og `.app` har `overflow: hidden`, og seksjonene brytes
 til flere rader i stedet for å rulle sideveis. Toppmenyen har `max-height: 50vh` med egen loddrett
@@ -253,11 +384,11 @@ rulling som siste sikring på svært små skjermer, slik at ingen kontroll blir 
   transponering, bounding box og skalering, snapping (terskel, hysterese, prioritet, ekskludering),
   justering (begge akser, begge referanser, begge midtstillingsbaser), fordeling (alle modi),
   plassering av målelapper, ankerets snaplinjer og terskel, objektpaletten og automatisk fargevalg,
-  historikk og persistens.
+  linjalintervaller, skillelinjer, målelinjer, låsing, historikk og persistens.
 - **Ende-til-ende** (`e2e/`, Playwright): to prosjekter – `desktop` (1440 × 900) og `narrow-touch`
-  (390 × 780 med touch). Dekker oppsett, oppretting, flytting, skalering, undo/redo, flervalg,
-  justering, fordeling, gruppering, målelinjer, lagrekkefølge, rutenettoppsett, zoom/panorering,
-  import/eksport og reload.
+  (390 × 780 med touch). Dekker oppsett, oppretting, opasitet, flytting, skalering, undo/redo,
+  flervalg, justering, fordeling, gruppering, låsing, avstandslinjer, skillelinjer, målelinjer,
+  lagrekkefølge, rutenettoppsett, zoom/panorering, import/eksport og reload.
 
 ## Kjente begrensninger
 
@@ -266,3 +397,6 @@ rulling som siste sikring på svært små skjermer, slik at ingen kontroll blir 
   gruppens bounding box.
 - Ett prosjekt om gangen i `localStorage`.
 - Angre-historikken er begrenset til de ti siste handlingene.
+- Skillelinjer går alltid tvers over hele flaten; de kan ikke være skrå eller korte.
+- En målelinje redigeres ved å flytte endene; hele linjen kan ikke dras i ett.
+- Linjalenes nullpunkt endrer bare avlesningen; X/Y-feltene i menyen er fortsatt relative til flaten.

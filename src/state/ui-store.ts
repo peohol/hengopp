@@ -25,15 +25,21 @@ export type ConfirmState = {
   onConfirm: () => void
 } | null
 
+/** Exact-position editor for a guide line, anchored where it was opened. */
+export type GuideDialogState = { guideId: string; anchor: { x: number; y: number } } | null
+
 export type UiStore = {
   objectDialog: ObjectDialogState
   setupDialogOpen: boolean
   helpOpen: boolean
   confirm: ConfirmState
+  guideDialog: GuideDialogState
   notices: Notice[]
 
   openObjectDialog: (state: NonNullable<ObjectDialogState>) => void
   closeObjectDialog: () => void
+  openGuideDialog: (state: NonNullable<GuideDialogState>) => void
+  closeGuideDialog: () => void
   setSetupDialogOpen: (open: boolean) => void
   setHelpOpen: (open: boolean) => void
   askConfirm: (state: NonNullable<ConfirmState>) => void
@@ -47,10 +53,13 @@ export const useUiStore = create<UiStore>((set, get) => ({
   setupDialogOpen: false,
   helpOpen: false,
   confirm: null,
+  guideDialog: null,
   notices: [],
 
   openObjectDialog: (state) => set({ objectDialog: state }),
   closeObjectDialog: () => set({ objectDialog: null }),
+  openGuideDialog: (state) => set({ guideDialog: state }),
+  closeGuideDialog: () => set({ guideDialog: null }),
   setSetupDialogOpen: (open) => set({ setupDialogOpen: open }),
   setHelpOpen: (open) => set({ helpOpen: open }),
   askConfirm: (state) => set({ confirm: state }),

@@ -3,7 +3,7 @@ import type { HengoppProject, MeasurementSide } from '@/models/project'
 import type { Viewport } from '@/geometry/coordinates'
 import { type Rect } from '@/geometry/bounds'
 import { anchorPoint } from '@/geometry/bounds'
-import { entitiesAtLevel } from '@/geometry/groups'
+import { entitiesAtLevel, isEntityLocked, objectIdsOfEntities } from '@/geometry/groups'
 import { HANDLES, HANDLE_CURSOR, HANDLE_LABEL, handlePoint } from '@/geometry/resizing'
 import { measurementLine, MEASUREMENT_SIDE_LABEL } from '@/geometry/measurements'
 import { layoutLabels } from '@/geometry/label-layout'
@@ -13,6 +13,8 @@ import { useProjectStore } from '@/state/project-store'
 import { togglePinnedMeasurement } from '@/state/doc-actions'
 import { deriveBorderColor, labelBackgroundColor } from '@/utils/colors'
 import { formatLength } from '@/utils/units'
+import { GuidesLayer } from './GuidesLayer'
+import { MeasureLayer } from './MeasureLayer'
 import { isOutsideSurface, previewedEntityBounds, previewedRect, previewedSelectionBounds } from './scene-helpers'
 
 const ACCENT = '#2f6fd0'
@@ -22,6 +24,8 @@ const HANDLE_HIT = 26
 type Props = {
   doc: HengoppProject
   viewport: Viewport
+  /** True on touch devices, where hit areas need to be fatter. */
+  coarsePointer: boolean
 }
 
 /**
@@ -29,7 +33,7 @@ type Props = {
  * snap guides, measurements and the marquee. Rendering here keeps every UI
  * element at a constant pixel size regardless of zoom.
  */
-export const OverlayLayer = memo(function OverlayLayer({ doc, viewport }: Props) {
+export const OverlayLayer = memo(function OverlayLayer({ doc, viewport, coarsePointer }: Props) {
   const selection = useInteractionStore((s) => s.selection)
   const keyId = useInteractionStore((s) => s.keyId)
   const hoverId = useInteractionStore((s) => s.hoverId)
@@ -39,6 +43,9 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport }: Props)
   const marquee = useInteractionStore((s) => s.marquee)
   const marqueeHits = useInteractionStore((s) => s.marqueeHits)
   const mode = useInteractionStore((s) => s.mode)
+  const tool = useInteractionStore((s) => s.tool)
+  const measureDraft = useInteractionStore((s) => s.measureDraft)
+  const snapObjectIds = useInteractionStore((s) => s.snapObjectIds)
 
   const sx = (mm: number) => mm * viewport.scale + viewport.offsetX
   const sy = (mm: number) => mm * viewport.scale + viewport.offsetY
@@ -65,7 +72,25 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport }: Props)
 
   const levelIds = useMemo(() => entitiesAtLevel(doc, activeGroupId), [doc, activeGroupId])
 
-  const showTemporaryMeasurements = selection.length === 1 && mode === 'idle'
+  // One locked member is enough to withdraw the handles: a resize maps the
+  // whole bounding box, so there is no way to scale the rest without dragging
+  // the locked object along.
+  const selectionHasLocked = selection.some((id) => isEntityLocked(doc, id))
+  // Distances are part of what a lock freezes on the canvas, so a locked
+  // selection shows no temporary measurements to toggle.
+  const showTemporaryMeasurements =
+    selection.length === 1 && mode === 'idle' && tool === 'select' && !selectionHasLocked
+
+  // Lock badges sit on the objects of whichever entity is hovered, so a locked
+  // object inside a group is reachable without entering the group first. The
+  // measure tool owns every press on the canvas, so the badge stands down.
+  const lockedHovered = useMemo(() => {
+    if (!hoverId || mode !== 'idle' || tool !== 'select') return []
+    return objectIdsOfEntities(doc, [hoverId])
+      .map((id) => doc.objects[id])
+      .filter((o) => o?.locked)
+      .map((o) => ({ id: o.id, rect: previewedRect(o, preview[o.id]) }))
+  }, [doc, hoverId, mode, preview, tool])
 
   const togglePin = (entityId: string, side: MeasurementSide) => {
     useProjectStore.getState().commit((draft) => togglePinnedMeasurement(draft, entityId, side))
@@ -223,8 +248,74 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport }: Props)
         onToggle={togglePin}
       />
 
-      {/* Resize handles for the whole selection. */}
-      {selectionBounds && selection.length > 0 && mode !== 'marquee' ? (
+      {/* User guide lines. They sit above the distance lines: a guide is a
+          deliberate, persistent artifact and must stay grabbable where a
+          transient measurement happens to cross it. */}
+      <GuidesLayer
+        guides={doc.guides}
+        surface={doc.surface}
+        sx={sx}
+        sy={sy}
+        coarsePointer={coarsePointer}
+        draggable={tool === 'select'}
+      />
+
+      {/* Free measuring lines. */}
+      <MeasureLayer
+        lines={doc.measureLines}
+        draft={measureDraft}
+        unit={doc.displayUnit}
+        sx={sx}
+        sy={sy}
+        interactive={tool === 'select'}
+        coarsePointer={coarsePointer}
+      />
+
+      {/* Objects an active snap is locked onto: their handles and anchor are
+          shown so the other places the point could land are visible too. */}
+      {snapObjectIds.map((id) => {
+        const obj = doc.objects[id]
+        if (!obj) return null
+        const rect = previewedRect(obj, preview[id])
+        const a = anchorPoint({ ...obj, xMm: rect.x, yMm: rect.y, widthMm: rect.width, heightMm: rect.height })
+        return (
+          <g key={`snaphint-${id}`} pointerEvents="none" data-testid="snap-hint">
+            {HANDLES.map((handle) => {
+              const p = handlePoint(rect, handle)
+              return (
+                <rect
+                  key={handle}
+                  x={sx(p.x) - 3}
+                  y={sy(p.y) - 3}
+                  width={6}
+                  height={6}
+                  fill="#ffffff"
+                  stroke={ACCENT}
+                  strokeWidth={1}
+                />
+              )
+            })}
+            <circle
+              cx={sx(a.x)}
+              cy={sy(a.y)}
+              r={5}
+              fill="#f4dc9a"
+              fillOpacity={0.9}
+              stroke="#14161a"
+              strokeWidth={1}
+            />
+          </g>
+        )
+      })}
+
+      {/* Lock badges on the hovered entity's locked objects. */}
+      {lockedHovered.map(({ id, rect }) => {
+        const r = toScreenRect(rect)
+        return <LockBadge key={`lock-${id}`} objectId={id} cx={r.x + r.width / 2} cy={r.y + r.height / 2} />
+      })}
+
+      {/* Resize handles for the whole selection. A locked selection has none. */}
+      {selectionBounds && selection.length > 0 && mode !== 'marquee' && !selectionHasLocked && tool === 'select' ? (
         <g data-testid="handles">
           {HANDLES.map((handle) => {
             const p = handlePoint(selectionBounds, handle)
@@ -280,6 +371,44 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport }: Props)
     </g>
   )
 })
+
+/**
+ * Padlock shown at the centre of a locked object while its entity is hovered.
+ * It rests at 75 % opacity and goes fully opaque under the pointer, where it
+ * also takes a finger cursor: clicking it unlocks the object again.
+ */
+function LockBadge({ objectId, cx, cy }: { objectId: string; cx: number; cy: number }) {
+  return (
+    <g
+      className="lock-badge"
+      data-lock-toggle={objectId}
+      // The badge belongs to its object: without this it would count as
+      // "not the object" on pointerover and hover itself away again.
+      data-object-id={objectId}
+      data-testid="lock-badge"
+      role="button"
+      aria-label="Lås opp objektet"
+    >
+      <circle cx={cx} cy={cy} r={14} fill="#ffffff" stroke="#14161a" strokeWidth={1} />
+      <path
+        d={`M${cx - 5.5} ${cy - 1}h11v8h-11z`}
+        fill="#f4dc9a"
+        stroke="#14161a"
+        strokeWidth={1.2}
+        strokeLinejoin="round"
+        pointerEvents="none"
+      />
+      <path
+        d={`M${cx - 3.2} ${cy - 1}v-3a3.2 3.2 0 0 1 6.4 0v3`}
+        fill="none"
+        stroke="#14161a"
+        strokeWidth={1.2}
+        strokeLinecap="round"
+        pointerEvents="none"
+      />
+    </g>
+  )
+}
 
 function Guide({
   guide,
@@ -394,6 +523,7 @@ function MeasurementLayer({ doc, preview, sx, sy, selection, showTemporary, onTo
   const drawn = items.flatMap((item) => {
     const bounds = previewedEntityBounds(doc, preview, item.entityId)
     if (!bounds) return []
+    const locked = isEntityLocked(doc, item.entityId)
     const line = measurementLine(bounds, doc.surface, item.side)
     const x1 = sx(line.x1)
     const y1 = sy(line.y1)
@@ -412,6 +542,7 @@ function MeasurementLayer({ doc, preview, sx, sy, selection, showTemporary, onTo
       {
         item,
         label,
+        locked,
         x1,
         y1,
         x2,
@@ -438,21 +569,27 @@ function MeasurementLayer({ doc, preview, sx, sy, selection, showTemporary, onTo
   return (
     <g data-testid="measurements">
       {drawn.map((d) => {
-        const { item, label, x1, y1, x2, y2, horizontal, slot } = d
+        const { item, label, locked, x1, y1, x2, y2, horizontal, slot } = d
         const place = byId.get(slot.id) ?? { cx: slot.cx, cy: slot.cy }
 
         return (
           <g
             key={item.key}
-            data-interactive="measurement"
+            data-interactive={locked ? undefined : 'measurement'}
             data-measurement-side={item.side}
             data-measurement-entity={item.entityId}
+            data-measurement-locked={locked ? '1' : undefined}
             data-testid={`measurement-${item.side}${item.pinned ? '-pinned' : ''}`}
-            style={{ cursor: 'pointer' }}
-            role="button"
-            tabIndex={0}
-            aria-label={`${item.pinned ? 'Løsne' : 'Fest'} måling til ${MEASUREMENT_SIDE_LABEL[item.side]}, ${label}`}
+            style={{ cursor: locked ? 'default' : 'pointer' }}
+            role={locked ? undefined : 'button'}
+            tabIndex={locked ? undefined : 0}
+            aria-label={
+              locked
+                ? `Måling til ${MEASUREMENT_SIDE_LABEL[item.side]}, ${label}. Objektet er låst.`
+                : `${item.pinned ? 'Løsne' : 'Fest'} måling til ${MEASUREMENT_SIDE_LABEL[item.side]}, ${label}`
+            }
             onKeyDown={(e) => {
+              if (locked) return
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault()
                 onToggle(item.entityId, item.side)
@@ -496,8 +633,9 @@ function MeasurementLayer({ doc, preview, sx, sy, selection, showTemporary, onTo
               stroke="#000000"
               strokeWidth={1}
             />
-            {/* The label always wins a click, even on top of an object. */}
-            <g data-measurement-label="1">
+            {/* A pinned label wins a click even on top of an object — it is a
+                deliberate artifact the user must be able to reach again. */}
+            <g data-measurement-label={item.pinned ? 'pinned' : 'temporary'}>
               <path
                 d={bannerPath(place.cx, place.cy, slot.width, slot.height, slot.axis)}
                 fill={d.fill}

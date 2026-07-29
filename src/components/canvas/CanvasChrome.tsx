@@ -4,7 +4,8 @@ import { useProjectStore } from '@/state/project-store'
 import { useInteractionStore } from '@/state/interaction-store'
 import { useViewportStore } from '@/state/viewport-store'
 import { zoomPercent } from '@/geometry/coordinates'
-import { formatLength } from '@/utils/units'
+import { rulerIntervalLabel } from './Rulers'
+import { formatLength, UNIT_LABEL } from '@/utils/units'
 
 /** Breadcrumb showing which group level the user is editing inside of. */
 export function GroupBreadcrumb() {
@@ -46,6 +47,7 @@ export function CanvasStatus() {
   const doc = useProjectStore((s) => s.doc)
   const selection = useInteractionStore((s) => s.selection)
   const snapSuspended = useInteractionStore((s) => s.snapSuspended)
+  const tool = useInteractionStore((s) => s.tool)
   const viewport = useViewportStore((s) => s.viewport)
   const baseScale = useViewportStore((s) => s.baseScale)
   const bounds = entitiesBounds(doc, selection)
@@ -54,6 +56,16 @@ export function CanvasStatus() {
     <div className="status" data-testid="status">
       <span>{Math.round(zoomPercent(viewport, baseScale))} %</span>
       <span aria-hidden="true">·</span>
+      <span data-testid="ruler-interval">
+        Linjal {rulerIntervalLabel(viewport, doc.displayUnit)} {UNIT_LABEL[doc.displayUnit]}
+      </span>
+      <span aria-hidden="true">·</span>
+      {tool === 'measure' ? (
+        <>
+          <span data-testid="status-tool">Målelinjer (M)</span>
+          <span aria-hidden="true">·</span>
+        </>
+      ) : null}
       <span>
         {selection.length === 0
           ? 'Ingen valgt'

@@ -74,6 +74,25 @@ export function entityAnchorPoint(graph: SceneGraph, id: string): { x: number; y
   return { x: roundMm(centerX(bounds)), y: roundMm(centerY(bounds)) }
 }
 
+/**
+ * Whether an entity is locked against canvas edits.
+ *
+ * A group counts as locked as soon as one of its objects is: moving the group
+ * would otherwise move that object indirectly, which is exactly what the lock
+ * is there to prevent.
+ */
+export function isEntityLocked(graph: SceneGraph, id: string): boolean {
+  const obj = graph.objects[id]
+  if (obj) return obj.locked
+  const ids = objectIdsOfEntities(graph, [id])
+  return ids.length > 0 && ids.some((objId) => graph.objects[objId]?.locked)
+}
+
+/** The entities of a selection that may still be moved, resized or aligned. */
+export function unlockedEntities(graph: SceneGraph, ids: string[]): string[] {
+  return ids.filter((id) => !isEntityLocked(graph, id))
+}
+
 export function parentOf(graph: SceneGraph, id: string): string | null {
   const obj = graph.objects[id]
   if (obj) return obj.parentGroupId

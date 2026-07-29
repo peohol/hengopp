@@ -10,4 +10,6 @@ export function createId(prefix = 'id'): string {
 export const newObjectId = () => createId('obj')
 export const newGroupId = () => createId('grp')
 export const newMeasurementId = () => createId('msr')
+export const newGuideId = () => createId('gde')
+export const newMeasureLineId = () => createId('mln')
 export const newProjectId = () => createId('prj')
