@@ -6,6 +6,7 @@ import { ObjectDialog } from '@/components/dialogs/ObjectDialog'
 import { SetupDialog } from '@/components/dialogs/SetupDialog'
 import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
 import { HelpDialog } from '@/components/dialogs/HelpDialog'
+import { GuidePopover } from '@/components/popovers/GuidePopover'
 import { Notices } from '@/components/Notices'
 import { useBrowserZoom } from '@/hooks/useBrowserZoom'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
@@ -87,6 +88,7 @@ export function App() {
       <SetupDialog />
       <ConfirmDialog />
       <HelpDialog />
+      <GuidePopover />
     </div>
   )
 }

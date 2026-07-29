@@ -18,20 +18,24 @@ const ObjectNode = memo(function ObjectNode({ object, unit, selectable }: Object
 
   const shared = {
     fill: object.fillColor,
+    // Only the fill is translucent: the border stays crisp so an object's
+    // outline is readable however light its fill is.
+    fillOpacity: object.fillOpacity,
     stroke: object.borderColor,
     strokeWidth: 1,
     vectorEffect: 'non-scaling-stroke' as const,
     'data-object-id': object.id,
     'data-testid': `object-${object.name}`,
-    className: `canvas__object${selectable ? ' is-selectable' : ''}`,
+    className: `canvas__object${selectable && !object.locked ? ' is-selectable' : ''}${
+      object.locked ? ' is-locked' : ''
+    }`,
     role: 'img',
-    'aria-label': `${object.name}, ${object.shape === 'rectangle' ? 'rektangel' : 'oval'}, x ${formatLength(
-      rect.x,
+    'aria-label': `${object.name}, ${object.shape === 'rectangle' ? 'rektangel' : 'oval'}${
+      object.locked ? ', låst' : ''
+    }, x ${formatLength(rect.x, unit)}, y ${formatLength(rect.y, unit)}, bredde ${formatLength(
+      rect.width,
       unit,
-    )}, y ${formatLength(rect.y, unit)}, bredde ${formatLength(rect.width, unit)}, høyde ${formatLength(
-      rect.height,
-      unit,
-    )}`,
+    )}, høyde ${formatLength(rect.height, unit)}`,
   }
 
   if (object.shape === 'ellipse') {

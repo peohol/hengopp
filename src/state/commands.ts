@@ -2,7 +2,14 @@ import type { HengoppProject } from '@/models/project'
 import type { AlignOptions } from '@/geometry/alignment'
 import { computeAlignment } from '@/geometry/alignment'
 import { computeDistribution, minimumEntities, type DistributeOptions } from '@/geometry/distribution'
-import { entitiesAtLevel, entitiesBounds, objectIdsOfEntities, parentOf } from '@/geometry/groups'
+import {
+  entitiesAtLevel,
+  entitiesBounds,
+  isEntityLocked,
+  objectIdsOfEntities,
+  parentOf,
+  unlockedEntities,
+} from '@/geometry/groups'
 import type { ZOrderOp } from '@/geometry/zorder'
 import { MIN_SIZE_MM } from '@/geometry/resizing'
 import {
@@ -11,8 +18,11 @@ import {
   duplicateEntities,
   groupEntities,
   moveEntitiesTo,
+  removeGuide,
+  removeMeasureLine,
   reorderEntities,
   scaleEntities,
+  setEntitiesLocked,
   ungroup,
 } from './doc-actions'
 import { useProjectStore } from './project-store'
@@ -24,13 +34,21 @@ const project = () => useProjectStore.getState()
 const interaction = () => useInteractionStore.getState()
 const ui = () => useUiStore.getState()
 
+/**
+ * The part of the selection that may be moved or resized. Locked entities stay
+ * selectable and editable, they just never travel with a canvas operation.
+ */
+export function movableSelection(): string[] {
+  return unlockedEntities(project().doc, interaction().selection)
+}
+
 export function nudgeSelection(dxMm: number, dyMm: number): void {
-  const { selection } = interaction()
-  if (selection.length === 0) return
+  const movable = movableSelection()
+  if (movable.length === 0) return
   project().commit((draft) => {
     applyDeltas(
       draft,
-      selection.map((id) => ({ id, dx: dxMm, dy: dyMm })),
+      movable.map((id) => ({ id, dx: dxMm, dy: dyMm })),
     )
   })
 }
@@ -156,7 +174,13 @@ export function alignSelection(opts: Omit<AlignOptions, 'keyId'>): void {
   const { selection, keyId } = interaction()
   if (selection.length === 0) return
   const doc = project().doc
-  const deltas = computeAlignment(doc, selection, doc.surface, { ...opts, keyId })
+  const movable = unlockedEntities(doc, selection)
+  // The key entity never moves, so a locked one is still a valid reference to
+  // align the others against.
+  const participants =
+    keyId && selection.includes(keyId) && !movable.includes(keyId) ? [...movable, keyId] : movable
+  if (participants.length === 0) return
+  const deltas = computeAlignment(doc, participants, doc.surface, { ...opts, keyId })
   if (deltas.length === 0) return
   project().commit((draft) => applyDeltas(draft, deltas))
 }
@@ -164,8 +188,11 @@ export function alignSelection(opts: Omit<AlignOptions, 'keyId'>): void {
 export function distributeSelection(opts: DistributeOptions, confirmedOverlap = false): boolean {
   const { selection } = interaction()
   const doc = project().doc
-  if (selection.length < minimumEntities(opts)) return false
-  const result = computeDistribution(doc, selection, doc.surface, opts)
+  // A locked object must not be spaced out along with the rest, so it is left
+  // out of the calculation entirely rather than pinned inside it.
+  const participants = unlockedEntities(doc, selection)
+  if (participants.length < minimumEntities(opts)) return false
+  const result = computeDistribution(doc, participants, doc.surface, opts)
   if (result.warning && !confirmedOverlap && /overlappe/.test(result.warning)) {
     ui().notify('warning', `${result.warning} Klikk samme knapp en gang til for å gjennomføre.`)
     return false
@@ -198,6 +225,68 @@ export function exitGroupLevel(): boolean {
   setActiveGroup(parent)
   setSelection([activeGroupId], activeGroupId)
   return true
+}
+
+/** True when every selected entity is locked (used for the toolbar toggle). */
+export function selectionIsLocked(): boolean {
+  const { selection } = interaction()
+  if (selection.length === 0) return false
+  const doc = project().doc
+  return selection.every((id) => isEntityLocked(doc, id))
+}
+
+/** Lock the whole selection, or unlock it when it is already fully locked. */
+export function toggleSelectionLock(): void {
+  const { selection, setSelection, keyId } = interaction()
+  if (selection.length === 0) return
+  const locking = !selectionIsLocked()
+  project().commit((draft) => setEntitiesLocked(draft, selection, locking))
+  // Locking a multi-selection would leave a selection the canvas can no longer
+  // act on, so it collapses to the key entity — still focused, just not movable.
+  if (locking && selection.length > 1) setSelection(keyId ? [keyId] : [], keyId ?? null)
+}
+
+export function setTool(tool: 'select' | 'measure'): void {
+  interaction().setTool(tool)
+}
+
+export function toggleMeasureTool(): void {
+  const { tool, setTool: apply } = interaction()
+  apply(tool === 'measure' ? 'select' : 'measure')
+}
+
+export function deleteGuide(id: string): void {
+  project().commit((draft) => removeGuide(draft, id))
+  const { activeGuideId, setActiveGuide, setHoverGuide } = interaction()
+  if (activeGuideId === id) setActiveGuide(null)
+  setHoverGuide(null)
+}
+
+/** Remove every guide line. Confirmed first, since it can undo a lot of work. */
+export function clearGuides(): void {
+  const count = project().doc.guides.length
+  if (count === 0) return
+  const run = () => {
+    project().commit((draft) => void (draft.guides = []))
+    const { setActiveGuide, setHoverGuide } = interaction()
+    setActiveGuide(null)
+    setHoverGuide(null)
+  }
+  ui().askConfirm({
+    title: 'Fjern alle skillelinjer',
+    message:
+      count === 1
+        ? 'Den ene skillelinjen fjernes. Du kan angre etterpå.'
+        : `Alle ${count} skillelinjene fjernes. Du kan angre etterpå.`,
+    confirmLabel: 'Fjern',
+    danger: true,
+    onConfirm: run,
+  })
+}
+
+export function deleteMeasureLine(id: string): void {
+  project().commit((draft) => removeMeasureLine(draft, id))
+  interaction().setHoverMeasure(null)
 }
 
 export function undo(): void {

@@ -1,5 +1,6 @@
 import type { SceneObject } from '@/models/object'
 import type { GridDefinition } from '@/models/grid'
+import type { GuideLine } from '@/models/guide'
 import type { SurfaceDefinition } from '@/models/project'
 import { type Rect, right, bottom, centerX, centerY, anchorPoint } from './bounds'
 import { gridLines } from './grid'
@@ -7,8 +8,8 @@ import { roundMm } from '@/utils/units'
 
 export type Axis = 'x' | 'y'
 
-export type SnapKind = 'edge-start' | 'center' | 'anchor' | 'edge-end' | 'grid'
-export type SnapSource = 'surface' | 'object' | 'grid'
+export type SnapKind = 'edge-start' | 'center' | 'anchor' | 'edge-end' | 'grid' | 'guide'
+export type SnapSource = 'surface' | 'object' | 'grid' | 'guide'
 
 export type SnapCandidate = { pos: number; kind: SnapKind }
 
@@ -59,6 +60,9 @@ const isEdge = (k: SnapKind) => k === 'edge-start' || k === 'edge-end'
  */
 export function pairPriority(moving: SnapKind, target: SnapKind, source: SnapSource): number {
   if (source === 'grid') return 6
+  // A guide is placed deliberately by the user, so it beats the surface grid on
+  // a tie, but never an explicit object-to-object relation.
+  if (source === 'guide') return 5.5
   if (moving === 'anchor' && target === 'anchor') return 1
   if (isEdge(moving) && isEdge(target) && moving === target) return 2
   if (moving === 'center' && target === 'center') return 3
@@ -232,6 +236,10 @@ export type BuildTargetsInput = {
   objects: SceneObject[]
   snapToGrid: boolean
   snapToObjects: boolean
+  /** Guide lines. They are always snapped to — placing one is the whole point. */
+  guides?: GuideLine[]
+  /** Guide excluded from the targets, e.g. the one currently being dragged. */
+  excludeGuideId?: string
 }
 
 /** Build every snap target for the current document state. */
@@ -284,6 +292,19 @@ export function buildSnapTargets(input: BuildTargetsInput): SnapTargets {
     }
   }
 
+  for (const guide of input.guides ?? []) {
+    if (guide.id === input.excludeGuideId) continue
+    const target: SnapTarget = {
+      pos: guide.posMm,
+      kind: 'guide',
+      source: 'guide',
+      refId: guide.id,
+      extent: guide.axis === 'x' ? fullY : fullX,
+    }
+    if (guide.axis === 'x') x.push(target)
+    else y.push(target)
+  }
+
   return { x, y }
 }
 
@@ -297,9 +318,11 @@ export function buildSnapTargetsForDocument(
     surface: SurfaceDefinition
     surfaceGrid: GridDefinition
     objects: Record<string, SceneObject>
+    guides?: GuideLine[]
     settings: { snapToGrid: boolean; snapToObjects: boolean }
   },
   movingObjectIds: string[],
+  options: { excludeGuideId?: string } = {},
 ): SnapTargets {
   const excluded = new Set(movingObjectIds)
   return buildSnapTargets({
@@ -308,7 +331,49 @@ export function buildSnapTargetsForDocument(
     objects: Object.values(doc.objects).filter((o) => !excluded.has(o.id)),
     snapToGrid: doc.settings.snapToGrid,
     snapToObjects: doc.settings.snapToObjects,
+    guides: doc.guides,
+    excludeGuideId: options.excludeGuideId,
   })
+}
+
+/**
+ * Snap a single free point (a measuring-line endpoint, a guide position) to the
+ * targets. Each axis is decided on its own, exactly as for a moving rectangle,
+ * so a point can land on an intersection, slide along one line, or stay free.
+ */
+export type PointSnapInput = {
+  point: { x: number; y: number }
+  targets: SnapTargets
+  activateMm: number
+  releaseMm: number
+  tieMm: number
+  previousXKey?: string
+  previousYKey?: string
+  /** Perpendicular extent used to size the drawn guide lines. */
+  xExtent?: [number, number]
+  yExtent?: [number, number]
+  guideMarginMm?: number
+}
+
+export function snapPoint(input: PointSnapInput): SnapResult & { x: number; y: number } {
+  const result = computeSnap({
+    xCandidates: [{ pos: input.point.x, kind: 'edge-start' }],
+    yCandidates: [{ pos: input.point.y, kind: 'edge-start' }],
+    targets: input.targets,
+    movingXExtent: input.xExtent ?? [input.point.x, input.point.x],
+    movingYExtent: input.yExtent ?? [input.point.y, input.point.y],
+    activateMm: input.activateMm,
+    releaseMm: input.releaseMm,
+    tieMm: input.tieMm,
+    previousXKey: input.previousXKey,
+    previousYKey: input.previousYKey,
+    guideMarginMm: input.guideMarginMm,
+  })
+  return {
+    ...result,
+    x: roundMm(input.point.x + result.deltaXMm),
+    y: roundMm(input.point.y + result.deltaYMm),
+  }
 }
 
 /** Snapping is on when at least one mode is enabled and Alt is not held. */

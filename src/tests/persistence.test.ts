@@ -189,9 +189,13 @@ describe('schema migration', () => {
       groups: {},
     }
     const migrated = migrateProject(legacy) as Record<string, unknown>
-    expect(migrated.schemaVersion).toBe(1)
+    // Migration lifts a document all the way to the current version, not just
+    // one step, so an ancient file opens exactly like a fresh one.
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION)
     expect(migrated.settings).toMatchObject({ snapToGrid: true, snapToObjects: true })
     expect(migrated.pinnedMeasurements).toEqual([])
+    expect(migrated.guides).toEqual([])
+    expect(migrated.measureLines).toEqual([])
 
     const parsed = parseProject(legacy)
     expect(parsed.ok).toBe(true)
@@ -199,6 +203,60 @@ describe('schema migration', () => {
       expect(parsed.project.surface.widthMm).toBe(2000)
       expect(parsed.project.displayUnit).toBe('cm')
     }
+  })
+
+  it('keeps pre-opacity objects fully opaque and unlocked', () => {
+    const legacy = {
+      schemaVersion: 1,
+      id: 'old',
+      name: 'Gammelt prosjekt',
+      displayUnit: 'cm',
+      surface: { widthMm: 2000, heightMm: 1500, color: '#ffffff' },
+      surfaceGrid: { enabled: false, mode: 'cells', cols: 3, rows: 2, hAlign: 'start', vAlign: 'start' },
+      objects: {
+        a: {
+          id: 'a',
+          name: 'Bilde',
+          shape: 'rectangle',
+          xMm: 0,
+          yMm: 0,
+          widthMm: 100,
+          heightMm: 100,
+          fillColor: '#c9d7e6',
+          borderColor: '#8fa6bd',
+          anchor: { u: 0.5, v: 0.5 },
+          internalGrid: { enabled: true, mode: 'cells', cols: 2, rows: 2, hAlign: 'start', vAlign: 'start' },
+          parentGroupId: null,
+          zIndex: 0,
+        },
+      },
+      groups: {},
+      pinnedMeasurements: [],
+      settings: { movementStepMm: 10, snapToGrid: true, snapToObjects: true, quantiseDrag: false },
+      isDraftSetup: false,
+    }
+    const parsed = parseProject(legacy)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.project.objects.a.fillOpacity).toBe(1)
+    expect(parsed.project.objects.a.locked).toBe(false)
+    // The stored grid is untouched: only new projects get the 2 × 2 default.
+    expect(parsed.project.surfaceGrid.enabled).toBe(false)
+  })
+
+  it('clamps guides that fall outside the surface', () => {
+    const project = makeProject([], [], {
+      guides: [
+        { id: 'g1', axis: 'x' as const, posMm: 99999, locked: false },
+        { id: 'g2', axis: 'y' as const, posMm: -40, locked: true },
+      ],
+    })
+    const parsed = parseProject(project)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.project.guides[0].posMm).toBe(project.surface.widthMm)
+    expect(parsed.project.guides[1].posMm).toBe(0)
+    expect(parsed.project.guides[1].locked).toBe(true)
   })
 
   it('leaves current documents untouched', () => {

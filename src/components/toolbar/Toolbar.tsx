@@ -13,11 +13,15 @@ import { useInteractionStore } from '@/state/interaction-store'
 import { useViewportStore } from '@/state/viewport-store'
 import { useUiStore } from '@/state/ui-store'
 import {
+  clearGuides,
   deleteSelection,
   duplicateSelection,
   groupSelection,
   redo,
   reorderSelection,
+  selectionIsLocked,
+  toggleMeasureTool,
+  toggleSelectionLock,
   undo,
   ungroupSelection,
 } from '@/state/commands'
@@ -43,11 +47,14 @@ export function Toolbar() {
   const selection = useInteractionStore((s) => s.selection)
   const multiSelectMode = useInteractionStore((s) => s.multiSelectMode)
   const setMultiSelectMode = useInteractionStore((s) => s.setMultiSelectMode)
+  const tool = useInteractionStore((s) => s.tool)
   const viewport = useViewportStore((s) => s.viewport)
   const baseScale = useViewportStore((s) => s.baseScale)
 
   const hasSelection = selection.length > 0
   const hasGroupSelected = selection.some((id) => doc.groups[id])
+  // Recomputed on every render; both stores it depends on are subscribed above.
+  const locked = selectionIsLocked()
 
   return (
     <header className="toolbar" data-testid="toolbar">
@@ -79,6 +86,15 @@ export function Toolbar() {
             onClick={() => useUiStore.getState().openObjectDialog({ mode: 'create' })}
           />
           <ObjectFields />
+          <IconButton
+            icon={locked ? 'lock' : 'unlock'}
+            label={locked ? 'Lås opp' : 'Lås'}
+            hint="Låste objekter kan ikke flyttes, skaleres eller få endret avstandsvisning på lerretet"
+            active={locked}
+            disabled={!hasSelection}
+            data-testid="lock-toggle"
+            onClick={toggleSelectionLock}
+          />
           <IconButton
             icon="duplicate"
             label="Dupliser"
@@ -130,6 +146,25 @@ export function Toolbar() {
         <ToolGroup label="Plassering" tone="placement">
           <AlignPopover />
           <DistributePopover />
+        </ToolGroup>
+
+        <ToolGroup label="Måling" tone="measure">
+          <IconButton
+            icon="measureTool"
+            label="Målelinjer"
+            hint="M · klikk og dra for å måle. Alt gir fri måling."
+            active={tool === 'measure'}
+            data-testid="measure-tool"
+            onClick={toggleMeasureTool}
+          />
+          <IconButton
+            icon="guideLine"
+            label="Fjern skillelinjer"
+            hint="Nye skillelinjer lages ved å klikke i en av linjalene rundt lerretet"
+            disabled={doc.guides.length === 0}
+            data-testid="clear-guides"
+            onClick={clearGuides}
+          />
         </ToolGroup>
 
         <ToolGroup label="Grupper" tone="groups">

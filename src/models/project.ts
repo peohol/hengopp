@@ -2,8 +2,10 @@ import { z } from 'zod'
 import { gridDefinitionSchema, DEFAULT_SURFACE_GRID } from './grid'
 import { sceneObjectSchema } from './object'
 import { objectGroupSchema } from './group'
+import { guideLineSchema } from './guide'
+import { measureLineSchema } from './measure'
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export const unitSchema = z.enum(['cm', 'mm'])
 export type Unit = z.infer<typeof unitSchema>
@@ -45,6 +47,10 @@ export const projectSchema = z.object({
   objects: z.record(sceneObjectSchema),
   groups: z.record(objectGroupSchema),
   pinnedMeasurements: z.array(pinnedMeasurementSchema),
+  /** User-placed guide lines other objects can snap to. */
+  guides: z.array(guideLineSchema).default([]),
+  /** Free measuring lines drawn with the measure tool. */
+  measureLines: z.array(measureLineSchema).default([]),
   settings: settingsSchema,
   /** True until the user has completed the first-run surface setup. */
   isDraftSetup: z.boolean().default(false),
@@ -69,6 +75,8 @@ export function createEmptyProject(id: string): HengoppProject {
     objects: {},
     groups: {},
     pinnedMeasurements: [],
+    guides: [],
+    measureLines: [],
     settings: {
       movementStepMm: 10,
       snapToGrid: true,

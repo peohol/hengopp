@@ -7,9 +7,13 @@ import {
   duplicateSelection,
   exitGroupLevel,
   groupSelection,
+  movableSelection,
   nudgeSelection,
   redo,
   selectAllOnLevel,
+  setTool,
+  toggleMeasureTool,
+  toggleSelectionLock,
   undo,
   ungroupSelection,
 } from '@/state/commands'
@@ -73,6 +77,24 @@ export function useKeyboardShortcuts(): void {
         return
       }
 
+      if (mod && e.key.toLowerCase() === 'l') {
+        e.preventDefault()
+        toggleSelectionLock()
+        return
+      }
+
+      // Unmodified tool shortcuts: M measures, V returns to selecting.
+      if (!mod && !e.altKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault()
+        toggleMeasureTool()
+        return
+      }
+      if (!mod && !e.altKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault()
+        setTool('select')
+        return
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (useInteractionStore.getState().selection.length === 0) return
         e.preventDefault()
@@ -83,6 +105,11 @@ export function useKeyboardShortcuts(): void {
       if (e.key === 'Escape') {
         const interaction = useInteractionStore.getState()
         if (interaction.mode !== 'idle') return // handled by the canvas
+        if (interaction.tool !== 'select') {
+          e.preventDefault()
+          setTool('select')
+          return
+        }
         if (exitGroupLevel()) {
           e.preventDefault()
           return
@@ -96,8 +123,9 @@ export function useKeyboardShortcuts(): void {
 
       const arrow = ARROWS[e.key]
       if (arrow) {
-        const { selection } = useInteractionStore.getState()
-        if (selection.length === 0) return
+        // A locked object stays put, so the key press is left to the browser
+        // rather than swallowed for nothing.
+        if (movableSelection().length === 0) return
         e.preventDefault()
         const step = useProjectStore.getState().doc.settings.movementStepMm
         const factor = e.shiftKey ? 10 : e.altKey ? 0.1 : 1

@@ -61,6 +61,31 @@ export function migrateProject(raw: unknown): unknown {
     doc.schemaVersion = 1
   }
 
+  if (version < 2) {
+    // v1 → v2: guides, measuring lines, per-object opacity and locking.
+    // Objects written before opacity existed were drawn fully opaque, so they
+    // keep that look instead of inheriting the new-object default.
+    doc.guides = Array.isArray(doc.guides) ? doc.guides : []
+    doc.measureLines = Array.isArray(doc.measureLines) ? doc.measureLines : []
+    if (doc.objects && typeof doc.objects === 'object') {
+      const objects: Record<string, unknown> = {}
+      for (const [id, value] of Object.entries(doc.objects as Record<string, unknown>)) {
+        if (!value || typeof value !== 'object') {
+          objects[id] = value
+          continue
+        }
+        const object = value as Record<string, unknown>
+        objects[id] = {
+          ...object,
+          fillOpacity: typeof object.fillOpacity === 'number' ? object.fillOpacity : 1,
+          locked: object.locked === true,
+        }
+      }
+      doc.objects = objects
+    }
+    doc.schemaVersion = 2
+  }
+
   return doc
 }
 
@@ -165,7 +190,18 @@ export function sanitiseProject(project: HengoppProject): HengoppProject {
 
   const pinnedMeasurements = project.pinnedMeasurements.filter((m) => objects[m.objectId] || groups[m.objectId])
 
-  return { ...project, objects, groups, pinnedMeasurements }
+  // A guide outside the surface could never be reached again, so clamp rather
+  // than drop: the user keeps the line, just at the nearest valid position.
+  const guides = project.guides.map((g) => ({
+    ...g,
+    posMm: clampToSurface(g.posMm, g.axis === 'x' ? project.surface.widthMm : project.surface.heightMm),
+  }))
+
+  return { ...project, objects, groups, pinnedMeasurements, guides }
+}
+
+function clampToSurface(value: number, sizeMm: number): number {
+  return Math.min(Math.max(value, 0), Math.max(sizeMm, 0))
 }
 
 function readRaw(key: string): unknown | null {

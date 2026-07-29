@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
+import type { GuideAxis } from '@/models/guide'
 import type { HengoppProject, MeasurementSide } from '@/models/project'
 import { screenToModel, type Point } from '@/geometry/coordinates'
 import {
@@ -12,15 +13,19 @@ import {
   entitiesBounds,
   entityBounds,
   entityTopZ,
+  isEntityLocked,
   objectIdsOfEntities,
   selectableEntityFor,
   translateEntity,
 } from '@/geometry/groups'
+import { resolveGuideDrag, surfaceExtentFor } from '@/geometry/guides'
+import { isDrawnMeasure } from '@/geometry/measure-lines'
 import {
   buildSnapTargetsForDocument,
   computeSnap,
   rectSnapCandidates,
   resizeSnapCandidates,
+  snapPoint,
   snappingEnabled,
   SNAP_ACTIVATE_PX,
   SNAP_RELEASE_PX,
@@ -37,7 +42,16 @@ import {
   resizeRect,
   type HandleId,
 } from '@/geometry/resizing'
-import { scaleEntities, togglePinnedMeasurement } from '@/state/doc-actions'
+import {
+  addMeasureLine,
+  moveGuide,
+  scaleEntities,
+  toggleGuideLock,
+  toggleMeasurePinned,
+  togglePinnedMeasurement,
+  updateObject,
+} from '@/state/doc-actions'
+import { deleteMeasureLine } from '@/state/commands'
 import { useProjectStore } from '@/state/project-store'
 import { useInteractionStore, type PreviewGeometry } from '@/state/interaction-store'
 import { useViewportStore } from '@/state/viewport-store'
@@ -50,8 +64,10 @@ const DOUBLE_TAP_MS = 500
 const DOUBLE_TAP_PX = 24
 /** Largest pinch delta taken at face value; ~1.22 × zoom for a single event. */
 const PINCH_DELTA_CAP = 20
+/** Shorter than this on screen and a measure drag is discarded as a stray tap. */
+const MIN_MEASURE_PX = 6
 
-type SessionKind = 'move' | 'resize' | 'marquee' | 'pan'
+type SessionKind = 'move' | 'resize' | 'marquee' | 'pan' | 'guide' | 'measure'
 
 type Session = {
   kind: SessionKind
@@ -72,6 +88,36 @@ type Session = {
   shiftKey: boolean
   altKey: boolean
   raf: number | null
+  /** Guide sessions: which guide is being dragged and along which axis. */
+  guideId?: string
+  guideAxis?: GuideAxis
+  guidePos?: number
+  /** Measure sessions: the snapped start point of the line being drawn. */
+  measureStart?: Point
+  measureEnd?: Point
+  /** Existing measuring line the press landed on, if any. */
+  measureId?: string
+}
+
+/** A blank session, so each start site only fills in what it actually uses. */
+function baseSession(kind: SessionKind, e: React.PointerEvent, startModel: Point): Session {
+  return {
+    kind,
+    pointerId: e.pointerId,
+    startClient: { x: e.clientX, y: e.clientY },
+    startModel,
+    lastClient: { x: e.clientX, y: e.clientY },
+    entityIds: [],
+    objectIds: [],
+    startRects: {},
+    startBounds: { x: 0, y: 0, width: 0, height: 0 },
+    anchor: null,
+    targets: { x: [], y: [] },
+    moved: false,
+    shiftKey: e.shiftKey,
+    altKey: e.altKey,
+    raf: null,
+  }
 }
 
 type PointerState = { x: number; y: number }
@@ -110,6 +156,11 @@ function handleFromEvent(target: EventTarget | null): HandleId | null {
   return (el?.getAttribute('data-handle') as HandleId | null) ?? null
 }
 
+function attributeFromEvent(target: EventTarget | null, attribute: string): string | null {
+  if (!(target instanceof Element)) return null
+  return target.closest(`[${attribute}]`)?.getAttribute(attribute) ?? null
+}
+
 export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasHandlers {
   const sessionRef = useRef<Session | null>(null)
   const pointersRef = useRef<Map<number, PointerState>>(new Map())
@@ -117,6 +168,9 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
   const lastTapRef = useRef<{ time: number; x: number; y: number; objectId: string | null } | null>(null)
   /** Object whose editor opens if the current press ends without movement. */
   const pendingEditRef = useRef<string | null>(null)
+  /** Guide whose exact-position popover opens on a double click / tap. */
+  const pendingGuideDialogRef = useRef<string | null>(null)
+  const lastGuideTapRef = useRef<{ time: number; guideId: string } | null>(null)
 
   const toLocal = useCallback(
     (clientX: number, clientY: number): Point => {
@@ -139,7 +193,9 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
     if (session?.raf) cancelAnimationFrame(session.raf)
     sessionRef.current = null
     pendingEditRef.current = null
+    pendingGuideDialogRef.current = null
     lastTapRef.current = null
+    lastGuideTapRef.current = null
     useInteractionStore.getState().endInteraction()
   }, [])
 
@@ -238,6 +294,65 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
     [buildTargetsFor, toModel],
   )
 
+  /** Drag a guide line. Locked guides only ever get the click, never the drag. */
+  const startGuideDrag = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>, guideId: string) => {
+      const doc = useProjectStore.getState().doc
+      const guide = doc.guides.find((g) => g.id === guideId)
+      if (!guide) return
+      const session = baseSession('guide', e, toModel(e.clientX, e.clientY))
+      session.guideId = guideId
+      session.guideAxis = guide.axis
+      session.guidePos = guide.posMm
+      // A guide never snaps to itself, and a locked one is not going anywhere,
+      // so the targets are only worth building for a real drag.
+      session.targets = guide.locked ? { x: [], y: [] } : buildSnapTargetsForDocument(doc, [], { excludeGuideId: guideId })
+      sessionRef.current = session
+
+      const interaction = useInteractionStore.getState()
+      interaction.setActiveGuide(guideId)
+      interaction.setMode('guide')
+
+      const now = Date.now()
+      const last = lastGuideTapRef.current
+      const isDouble = !!last && now - last.time < DOUBLE_TAP_MS && last.guideId === guideId
+      pendingGuideDialogRef.current = isDouble ? guideId : null
+      lastGuideTapRef.current = isDouble ? null : { time: now, guideId }
+    },
+    [toModel],
+  )
+
+  /** Start drawing a measuring line from the (snapped) press position. */
+  const startMeasure = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>, measureId: string | null) => {
+      const doc = useProjectStore.getState().doc
+      const viewport = useViewportStore.getState().viewport
+      const model = toModel(e.clientX, e.clientY)
+      const targets = buildSnapTargetsForDocument(doc, [])
+      const start = snappingEnabled(doc.settings, e.altKey)
+        ? (() => {
+            const snapped = snapPoint({
+              point: model,
+              targets,
+              activateMm: SNAP_ACTIVATE_PX / viewport.scale,
+              releaseMm: SNAP_RELEASE_PX / viewport.scale,
+              tieMm: SNAP_TIE_PX / viewport.scale,
+            })
+            return { x: snapped.x, y: snapped.y }
+          })()
+        : model
+
+      const session = baseSession('measure', e, model)
+      session.targets = targets
+      session.measureStart = start
+      session.measureEnd = start
+      session.measureId = measureId ?? undefined
+      sessionRef.current = session
+      useInteractionStore.getState().setMode('measure')
+    },
+    [toModel],
+  )
+
   const computeFrame = useCallback(() => {
     const session = sessionRef.current
     if (!session) return null
@@ -249,6 +364,76 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
     const tie = SNAP_TIE_PX / viewport.scale
     const guideMargin = 16 / viewport.scale
     const snappingOn = snappingEnabled(doc.settings, session.altKey)
+
+    if (session.kind === 'guide' && session.guideAxis && session.guideId) {
+      const axis = session.guideAxis
+      const raw = axis === 'x' ? model.x : model.y
+      const result = resolveGuideDrag({
+        axis,
+        posMm: raw,
+        sizeMm: surfaceExtentFor(doc.surface, axis),
+        stepMm: doc.settings.movementStepMm,
+        targets: session.targets,
+        snappingOn,
+        activateMm: activate,
+        releaseMm: release,
+        tieMm: tie,
+        previousKey: axis === 'x' ? session.prevXKey : session.prevYKey,
+      })
+      if (axis === 'x') session.prevXKey = result.key
+      else session.prevYKey = result.key
+      session.guidePos = result.posMm
+      return {
+        preview: {} as Record<string, PreviewGeometry>,
+        guides: axis === 'x' ? { x: result.guide } : { y: result.guide },
+        dx: 0,
+        dy: 0,
+        bounds: null as Rect | null,
+      }
+    }
+
+    if (session.kind === 'measure' && session.measureStart) {
+      let point = model
+      if (session.shiftKey) {
+        // Shift constrains a measurement to the dominant axis, exactly as it
+        // constrains a drag.
+        const dx = Math.abs(model.x - session.measureStart.x)
+        const dy = Math.abs(model.y - session.measureStart.y)
+        point = dx >= dy ? { x: model.x, y: session.measureStart.y } : { x: session.measureStart.x, y: model.y }
+      }
+      if (snappingOn) {
+        const snapped = snapPoint({
+          point,
+          targets: session.targets,
+          activateMm: activate,
+          releaseMm: release,
+          tieMm: tie,
+          previousXKey: session.prevXKey,
+          previousYKey: session.prevYKey,
+          guideMarginMm: guideMargin,
+        })
+        session.prevXKey = snapped.xKey
+        session.prevYKey = snapped.yKey
+        session.measureEnd = { x: snapped.x, y: snapped.y }
+        return {
+          preview: {} as Record<string, PreviewGeometry>,
+          guides: { x: snapped.xGuide, y: snapped.yGuide },
+          dx: 0,
+          dy: 0,
+          bounds: null as Rect | null,
+        }
+      }
+      session.prevXKey = undefined
+      session.prevYKey = undefined
+      session.measureEnd = point
+      return {
+        preview: {} as Record<string, PreviewGeometry>,
+        guides: {},
+        dx: 0,
+        dy: 0,
+        bounds: null as Rect | null,
+      }
+    }
 
     if (session.kind === 'move') {
       let dx = model.x - session.startModel.x
@@ -385,6 +570,16 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       const store = useInteractionStore.getState()
       store.setPreview(frame.preview)
       store.setGuides(frame.guides)
+      if (session.kind === 'guide' && session.guideId && session.guidePos !== undefined) {
+        store.setGuideDrag({ id: session.guideId, posMm: session.guidePos })
+      } else if (session.kind === 'measure' && session.measureStart && session.measureEnd) {
+        store.setMeasureDraft({
+          x1Mm: session.measureStart.x,
+          y1Mm: session.measureStart.y,
+          x2Mm: session.measureEnd.x,
+          y2Mm: session.measureEnd.y,
+        })
+      }
     })
   }, [computeFrame])
 
@@ -416,6 +611,29 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
 
     if (!session.moved) {
       interaction.endInteraction()
+      // A press on a guide or a measuring line that never moved is a click:
+      // it toggles the lock, or the pinned labels.
+      if (session.kind === 'guide' && session.guideId) {
+        const guideId = session.guideId
+        if (pendingGuideDialogRef.current === guideId) {
+          pendingGuideDialogRef.current = null
+          // The first click of the pair already toggled the lock. Put it back:
+          // opening the exact-position popover must not change the lock state.
+          useProjectStore.getState().commit((draft) => toggleGuideLock(draft, guideId))
+          useUiStore.getState().openGuideDialog({
+            guideId,
+            anchor: { x: session.lastClient.x, y: session.lastClient.y },
+          })
+        } else {
+          useProjectStore.getState().commit((draft) => toggleGuideLock(draft, guideId))
+        }
+        return
+      }
+      if (session.kind === 'measure' && session.measureId) {
+        const measureId = session.measureId
+        useProjectStore.getState().commit((draft) => toggleMeasurePinned(draft, measureId))
+        return
+      }
       // A second press that ended without movement is a double click / tap.
       const pending = pendingEditRef.current
       pendingEditRef.current = null
@@ -423,26 +641,53 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       return
     }
     pendingEditRef.current = null
+    pendingGuideDialogRef.current = null
+
+    // The last frame may still be queued, so recompute from the final pointer
+    // position before committing anything.
+    const finalFrame = () => {
+      sessionRef.current = session
+      const f = computeFrame()
+      sessionRef.current = null
+      return f
+    }
+
+    if (session.kind === 'guide' && session.guideId) {
+      finalFrame()
+      const guideId = session.guideId
+      const guidePos = session.guidePos
+      if (guidePos !== undefined) {
+        useProjectStore.getState().commit((draft) => moveGuide(draft, guideId, guidePos))
+      }
+      interaction.endInteraction()
+      return
+    }
+
+    if (session.kind === 'measure') {
+      finalFrame()
+      const start = session.measureStart
+      const end = session.measureEnd
+      const viewport = useViewportStore.getState().viewport
+      if (start && end) {
+        const line = { x1Mm: start.x, y1Mm: start.y, x2Mm: end.x, y2Mm: end.y, pinned: false }
+        // A flick that never became a real line leaves nothing behind.
+        if (isDrawnMeasure({ id: 'draft', ...line }, MIN_MEASURE_PX / viewport.scale)) {
+          useProjectStore.getState().commit((draft) => void addMeasureLine(draft, line))
+        }
+      }
+      interaction.endInteraction()
+      return
+    }
 
     if (session.kind === 'move') {
-      const frame = (() => {
-        sessionRef.current = session
-        const f = computeFrame()
-        sessionRef.current = null
-        return f
-      })()
+      const frame = finalFrame()
       if (frame && (frame.dx !== 0 || frame.dy !== 0)) {
         useProjectStore.getState().commit((draft) => {
           for (const id of session.entityIds) translateEntity(draft, id, frame.dx, frame.dy)
         })
       }
     } else if (session.kind === 'resize') {
-      const frame = (() => {
-        sessionRef.current = session
-        const f = computeFrame()
-        sessionRef.current = null
-        return f
-      })()
+      const frame = finalFrame()
       if (frame?.bounds) {
         const finalBounds = frame.bounds
         useProjectStore.getState().commit((draft) => {
@@ -488,28 +733,42 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       if (interaction.spacePanArmed || e.button === 1) {
         e.preventDefault()
         svg.setPointerCapture(e.pointerId)
-        sessionRef.current = {
-          kind: 'pan',
-          pointerId: e.pointerId,
-          startClient: { x: e.clientX, y: e.clientY },
-          startModel: { x: 0, y: 0 },
-          lastClient: { x: e.clientX, y: e.clientY },
-          entityIds: [],
-          objectIds: [],
-          startRects: {},
-          startBounds: { x: 0, y: 0, width: 0, height: 0 },
-          anchor: null,
-          targets: { x: [], y: [] },
-          moved: false,
-          shiftKey: e.shiftKey,
-          altKey: e.altKey,
-          raf: null,
-        }
+        sessionRef.current = baseSession('pan', e, { x: 0, y: 0 })
         interaction.setMode('pan')
         return
       }
 
       if (e.button !== 0 && e.pointerType === 'mouse') return
+
+      // The lock badge is the way out of a lock, so it wins every press.
+      const lockToggle = attributeFromEvent(e.target, 'data-lock-toggle')
+      if (lockToggle) {
+        e.preventDefault()
+        useProjectStore.getState().commit((draft) => updateObject(draft, lockToggle, { locked: false }))
+        return
+      }
+
+      // Guide lines: drag to move, click to lock, double click for the exact
+      // position. A locked guide can still be clicked — that is how it unlocks.
+      const guideId = attributeFromEvent(e.target, 'data-guide-id')
+      if (guideId) {
+        e.preventDefault()
+        svg.setPointerCapture(e.pointerId)
+        startGuideDrag(e, guideId)
+        return
+      }
+
+      if (interaction.tool === 'measure') {
+        e.preventDefault()
+        const deleteId = attributeFromEvent(e.target, 'data-measure-delete')
+        if (deleteId) {
+          deleteMeasureLine(deleteId)
+          return
+        }
+        svg.setPointerCapture(e.pointerId)
+        startMeasure(e, attributeFromEvent(e.target, 'data-measure-id'))
+        return
+      }
 
       const handle = handleFromEvent(e.target)
       if (handle && interaction.selection.length > 0) {
@@ -520,19 +779,23 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       }
 
       // Measurement lines: toggle the pin, but never steal a press meant for an
-      // object underneath. The label always wins; the long dashed line only wins
-      // where there is no object.
+      // object underneath. A pinned label still wins, since it is a deliberate
+      // artifact that must stay reachable; a temporary one gives way, so a
+      // transient label drifting across an object never blocks selecting it.
       const measurement =
         e.target instanceof Element ? e.target.closest<SVGGElement>('[data-measurement-side]') : null
       if (measurement) {
         const stack = document.elementsFromPoint(e.clientX, e.clientY)
-        const onLabel = stack.some((el) => el.closest?.('[data-measurement-label]'))
+        const onPinnedLabel = stack.some(
+          (el) => el.closest?.('[data-measurement-label]')?.getAttribute('data-measurement-label') === 'pinned',
+        )
         const overObject = stack.some((el) => el.hasAttribute('data-object-id'))
-        if (onLabel || !overObject) {
+        if (onPinnedLabel || !overObject) {
           e.preventDefault()
           const entityId = measurement.getAttribute('data-measurement-entity')
           const side = measurement.getAttribute('data-measurement-side') as MeasurementSide | null
-          if (entityId && side) {
+          // Toggling a distance is one of the things a lock freezes.
+          if (entityId && side && !isEntityLocked(doc, entityId)) {
             useProjectStore.getState().commit((draft) => togglePinnedMeasurement(draft, entityId, side))
           }
           return
@@ -567,7 +830,17 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
         }
         if (!entityId) return
 
+        const locked = isEntityLocked(doc, entityId)
         const additive = e.metaKey || e.ctrlKey || interaction.multiSelectMode
+
+        // A locked entity is focusable by a direct click, but never joins a
+        // multi-selection: it could not travel with the others anyway.
+        if (locked) {
+          if (additive) return
+          interaction.setSelection([entityId], entityId)
+          return
+        }
+
         let nextSelection: string[]
         if (additive) {
           interaction.toggleSelection(entityId)
@@ -580,9 +853,11 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
           interaction.setSelection(nextSelection, entityId)
         }
 
-        if (nextSelection.length > 0 && nextSelection.includes(entityId)) {
+        // Locked entities that were already selected stay behind.
+        const movable = nextSelection.filter((id) => !isEntityLocked(doc, id))
+        if (movable.includes(entityId)) {
           svg.setPointerCapture(e.pointerId)
-          startMove(e, nextSelection)
+          startMove(e, movable)
         }
         return
       }
@@ -590,28 +865,11 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       // Empty area → marquee selection (and clear on tap).
       e.preventDefault()
       svg.setPointerCapture(e.pointerId)
-      const startModel = toModel(e.clientX, e.clientY)
-      sessionRef.current = {
-        kind: 'marquee',
-        pointerId: e.pointerId,
-        startClient: { x: e.clientX, y: e.clientY },
-        startModel,
-        lastClient: { x: e.clientX, y: e.clientY },
-        entityIds: [],
-        objectIds: [],
-        startRects: {},
-        startBounds: { x: 0, y: 0, width: 0, height: 0 },
-        anchor: null,
-        targets: { x: [], y: [] },
-        moved: false,
-        shiftKey: e.shiftKey,
-        altKey: e.altKey,
-        raf: null,
-      }
+      sessionRef.current = baseSession('marquee', e, toModel(e.clientX, e.clientY))
       interaction.setMode('marquee')
       if (!(e.metaKey || e.ctrlKey || interaction.multiSelectMode)) interaction.clearSelection()
     },
-    [cancelSession, startMove, startResize, svgRef, toModel],
+    [cancelSession, startGuideDrag, startMeasure, startMove, startResize, svgRef, toModel],
   )
 
   const onPointerMove = useCallback(
@@ -645,6 +903,8 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       // The gesture turned into a drag, so it is no longer a double click/tap.
       session.moved = true
       pendingEditRef.current = null
+      pendingGuideDialogRef.current = null
+      lastGuideTapRef.current = null
       session.shiftKey = e.shiftKey
       session.altKey = e.altKey
 
@@ -667,7 +927,10 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
         const rect = normaliseRect(session.startModel, current)
         const doc = useProjectStore.getState().doc
         const { activeGroupId } = useInteractionStore.getState()
+        // Locked entities are skipped: a marquee is a bulk gesture, and the
+        // whole point of the lock is to keep them out of bulk operations.
         const hits = entitiesAtLevel(doc, activeGroupId).filter((id) => {
+          if (isEntityLocked(doc, id)) return false
           const bounds = entityBounds(doc, id)
           return bounds ? rectContainsRect(rect, bounds) : false
         })

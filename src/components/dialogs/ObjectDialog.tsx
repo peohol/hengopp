@@ -4,7 +4,14 @@ import { LengthField } from '@/components/common/NumberField'
 import { ColorField } from '@/components/common/ColorField'
 import { Segmented } from '@/components/common/Segmented'
 import { GridEditor } from '@/components/common/GridEditor'
-import { DEFAULT_ANCHOR, DEFAULT_OBJECT_FILL, type Anchor, type SceneObject, type Shape } from '@/models/object'
+import {
+  DEFAULT_ANCHOR,
+  DEFAULT_OBJECT_FILL,
+  DEFAULT_OBJECT_OPACITY,
+  type Anchor,
+  type SceneObject,
+  type Shape,
+} from '@/models/object'
 import { DEFAULT_OBJECT_GRID, type GridDefinition } from '@/models/grid'
 import { constrainAnchor } from '@/geometry/bounds'
 import { anchorSnapLines, anchorSnapThreshold, interiorGridLines } from '@/geometry/grid'
@@ -27,6 +34,8 @@ type Draft = {
   widthMm: number
   heightMm: number
   fillColor: string
+  /** 0–1 internally; the field itself works in whole percent. */
+  fillOpacity: number
   internalGrid: GridDefinition
   anchor: Anchor
 }
@@ -38,6 +47,7 @@ function draftFromObject(o: SceneObject): Draft {
     widthMm: o.widthMm,
     heightMm: o.heightMm,
     fillColor: o.fillColor,
+    fillOpacity: o.fillOpacity,
     internalGrid: { ...o.internalGrid },
     anchor: { ...o.anchor },
   }
@@ -50,9 +60,16 @@ function emptyDraft(): Draft {
     widthMm: 400,
     heightMm: 300,
     fillColor: DEFAULT_OBJECT_FILL,
+    fillOpacity: DEFAULT_OBJECT_OPACITY,
     internalGrid: { ...DEFAULT_OBJECT_GRID },
     anchor: { ...DEFAULT_ANCHOR },
   }
+}
+
+/** Percent in, 0–1 out — clamped, so a stray value can never leave the range. */
+function opacityFromPercent(percent: number): number {
+  if (!Number.isFinite(percent)) return DEFAULT_OBJECT_OPACITY
+  return Math.min(1, Math.max(0, Math.round(percent) / 100))
 }
 
 /**
@@ -118,6 +135,8 @@ function ObjectEditor({ state }: { state: NonNullable<ObjectDialogState> }) {
         widthMm: draft.widthMm,
         heightMm: draft.heightMm,
         fillColor: draft.fillColor,
+        fillOpacity: draft.fillOpacity,
+        locked: false,
         borderColor,
         anchor: draft.anchor,
         internalGrid: draft.internalGrid,
@@ -134,6 +153,7 @@ function ObjectEditor({ state }: { state: NonNullable<ObjectDialogState> }) {
           widthMm: draft.widthMm,
           heightMm: draft.heightMm,
           fillColor: draft.fillColor,
+          fillOpacity: draft.fillOpacity,
           borderColor,
           anchor: draft.anchor,
           internalGrid: draft.internalGrid,
@@ -245,6 +265,11 @@ function ObjectEditor({ state }: { state: NonNullable<ObjectDialogState> }) {
             </div>
           </div>
 
+          <OpacityField
+            value={draft.fillOpacity}
+            onChange={(fillOpacity) => setDraft({ ...draft, fillOpacity })}
+          />
+
           <details className="section" open>
             <summary>Internt rutenett</summary>
             <GridEditor
@@ -282,6 +307,49 @@ function ObjectEditor({ state }: { state: NonNullable<ObjectDialogState> }) {
         </div>
       </div>
     </Modal>
+  )
+}
+
+/**
+ * Fill opacity as whole percent. The slider is the quick way, the number field
+ * the exact one; both write the same clamped 0–1 value.
+ */
+function OpacityField({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  const percent = Math.round(value * 100)
+  return (
+    <div className="field">
+      <label className="field__label" htmlFor="object-opacity">
+        Opasitet
+      </label>
+      <div className="row" style={{ gap: 8 }}>
+        <input
+          id="object-opacity"
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={percent}
+          className="slider"
+          data-testid="object-opacity"
+          onChange={(e) => onChange(opacityFromPercent(Number(e.target.value)))}
+        />
+        <div className="field__row" style={{ flex: '0 0 auto' }}>
+          <input
+            type="text"
+            inputMode="numeric"
+            style={{ width: 44, textAlign: 'right' }}
+            value={String(percent)}
+            aria-label="Opasitet i prosent"
+            data-testid="object-opacity-value"
+            onChange={(e) => {
+              const next = Number(e.target.value.replace(/[^\d]/g, ''))
+              if (Number.isFinite(next)) onChange(opacityFromPercent(next))
+            }}
+          />
+          <span className="field__suffix">%</span>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -384,9 +452,27 @@ function AnchorPreview({ draft, borderColor, onAnchorChange }: PreviewProps) {
         onPointerLeave={endDrag}
       >
         {draft.shape === 'ellipse' ? (
-          <ellipse cx={x + w / 2} cy={y + h / 2} rx={w / 2} ry={h / 2} fill={draft.fillColor} stroke={borderColor} strokeWidth={1} />
+          <ellipse
+            cx={x + w / 2}
+            cy={y + h / 2}
+            rx={w / 2}
+            ry={h / 2}
+            fill={draft.fillColor}
+            fillOpacity={draft.fillOpacity}
+            stroke={borderColor}
+            strokeWidth={1}
+          />
         ) : (
-          <rect x={x} y={y} width={w} height={h} fill={draft.fillColor} stroke={borderColor} strokeWidth={1} />
+          <rect
+            x={x}
+            y={y}
+            width={w}
+            height={h}
+            fill={draft.fillColor}
+            fillOpacity={draft.fillOpacity}
+            stroke={borderColor}
+            strokeWidth={1}
+          />
         )}
 
         {draft.internalGrid.enabled ? (

@@ -13,7 +13,10 @@ const ROWS: [string, string][] = [
   [`${MOD_LABEL} + G`, 'Grupper'],
   [`${MOD_LABEL} + Shift + G`, 'Løs opp gruppe'],
   [`${MOD_LABEL} + A`, 'Velg alle på aktivt gruppenivå'],
-  ['Escape', 'Avbryt draoperasjon, lukk dialog eller gå ett gruppenivå ut'],
+  [`${MOD_LABEL} + L`, 'Lås eller lås opp utvalget'],
+  ['M', 'Målelinjeverktøyet av og på'],
+  ['V', 'Tilbake til vanlig valgverktøy'],
+  ['Escape', 'Forlat verktøy, avbryt draoperasjon, lukk dialog eller gå ett gruppenivå ut'],
   ['Enter', 'Bekreft verdien i et inputfelt'],
   ['Mellomrom + dra', 'Panorer arbeidsflaten'],
   ['Midtre museknapp + dra', 'Panorer arbeidsflaten'],
@@ -27,6 +30,12 @@ const ROWS: [string, string][] = [
   ['Alt under skalering', 'Skaler fra sentrum (snapping er da av)'],
   ['Dobbeltklikk objekt', 'Åpne redigeringsdialogen'],
   ['Dobbeltklikk gruppe', 'Gå inn i gruppen'],
+  ['Klikk i en linjal', 'Lag en skillelinje der du klikker'],
+  ['Klikk på skillelinje', 'Lås eller lås opp posisjonen'],
+  ['Dobbeltklikk skillelinje', 'Oppgi nøyaktig posisjon fra valgfri kant'],
+  ['Alt under måling', 'Fri måling uten snapping'],
+  ['Shift under måling', 'Lås målelinjen til vannrett eller loddrett'],
+  ['Klikk på målelinje', 'Fest lengdemålene så de blir stående'],
 ]
 
 export function HelpDialog() {
@@ -64,7 +73,14 @@ export function HelpDialog() {
         </table>
         <p className="hint">
           På touch: bruk flervalgsmodus i toppmenyen for å velge flere objekter, pinch for å zoome, to fingre
-          for å panorere og dobbelttapp for å redigere.
+          for å panorere og dobbelttapp for å redigere. Skillelinjer lages ved å tappe en linjal, og hver linje
+          har et håndtak du kan dra i – det trengs ingen hovering.
+        </p>
+        <p className="hint">
+          Et låst objekt kan ikke flyttes, skaleres eller få endret avstandsvisning på lerretet, og blir aldri
+          med på justering, fordeling, seleksjonsrektangel eller flervalg. Alt annet – navn, farge, rutenett,
+          rekkefølge og sletting – fungerer som før. Hold pekeren over objektet og klikk hengelåsen for å låse
+          opp igjen.
         </p>
       </div>
     </Modal>

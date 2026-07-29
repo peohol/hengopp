@@ -18,6 +18,8 @@ export function makeObject(partial: Partial<SceneObject> & { id?: string }): Sce
     heightMm: partial.heightMm ?? 100,
     fillColor: partial.fillColor ?? '#c9d7e6',
     borderColor: partial.borderColor ?? '#8fa6bd',
+    fillOpacity: partial.fillOpacity ?? 1,
+    locked: partial.locked ?? false,
     anchor: partial.anchor ?? { u: 0.5, v: 0.5 },
     internalGrid: partial.internalGrid ?? { ...DEFAULT_OBJECT_GRID },
     parentGroupId: partial.parentGroupId ?? null,

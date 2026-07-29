@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import {
   clickModel,
+  clickRuler,
   completeSetup,
   createObject,
   disableSnapping,
@@ -711,6 +712,208 @@ test.describe('Hengopp', () => {
       await page.evaluate(() => window.__hengopp!.interaction.getState().activeGroupId),
     ).toBeNull()
     expect(await selection(page)).toEqual([groupId])
+  })
+
+  test('21: new objects are 80 % opaque and the value is editable', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page, 300, 200)
+
+    await page.getByTestId('new-object').click()
+    await expect(page.getByTestId('object-opacity')).toHaveValue('80')
+    await page.getByTestId('object-name').fill('Bilde')
+    await page.getByTestId('object-save').click()
+
+    let doc = await getDoc(page)
+    expect(Object.values(doc.objects)[0].fillOpacity).toBeCloseTo(0.8, 5)
+    // The fill really is translucent on the canvas; the border is not.
+    await expect(page.getByTestId('object-Bilde')).toHaveAttribute('fill-opacity', '0.8')
+
+    await page.getByTestId('edit-object').click()
+    await page.getByTestId('object-opacity-value').fill('45')
+    await page.getByTestId('object-save').click()
+    doc = await getDoc(page)
+    expect(Object.values(doc.objects)[0].fillOpacity).toBeCloseTo(0.45, 5)
+  })
+
+  test('22: a new project shows a 2 × 2 surface grid', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page, 300, 200)
+
+    const doc = await getDoc(page)
+    expect(doc.surfaceGrid).toMatchObject({ enabled: true, cols: 2, rows: 2 })
+    // One interior line per axis.
+    await expect(page.locator('[data-testid="surface-grid"] line')).toHaveCount(2)
+  })
+
+  test('23: a locked object can be focused and edited, but never moved', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page, 300, 200)
+    await createObject(page, { name: 'Fast', widthCm: 60, heightCm: 40 })
+    await createObject(page, { name: 'Løs', widthCm: 40, heightCm: 40 })
+    await page.getByTestId('prop-x').fill('10')
+    await page.getByTestId('prop-x').press('Enter')
+
+    const fast = await objectByName(page, 'Fast')
+    await clickModel(page, { x: fast.xMm + fast.widthMm / 2, y: fast.yMm + fast.heightMm / 2 })
+    await page.getByTestId('lock-toggle').click()
+    expect((await objectByName(page, 'Fast')).locked).toBe(true)
+
+    // No resize handles while the selection is locked.
+    await expect(page.getByTestId('handles')).toBeHidden()
+
+    // Dragging it does nothing, and writes no history.
+    const before = await historyLength(page)
+    await dragModel(
+      page,
+      { x: fast.xMm + 20, y: fast.yMm + 20 },
+      { x: fast.xMm + 400, y: fast.yMm + 300 },
+    )
+    const afterDrag = await objectByName(page, 'Fast')
+    expect(afterDrag.xMm).toBe(fast.xMm)
+    expect(afterDrag.yMm).toBe(fast.yMm)
+    expect(await historyLength(page)).toBe(before)
+
+    // Arrow keys leave it alone too.
+    await page.keyboard.press('ArrowRight')
+    expect((await objectByName(page, 'Fast')).xMm).toBe(fast.xMm)
+
+    // A direct click still focuses it; a marquee never picks it up.
+    expect(await selection(page)).toEqual([fast.id])
+    await dragModel(page, { x: 5, y: 5 }, { x: 2990, y: 1990 })
+    expect(await selection(page)).not.toContain(fast.id)
+    expect(await selection(page)).toContain((await objectByName(page, 'Løs')).id)
+
+    // Ctrl-clicking it never adds it to a multi-selection.
+    const selectionBefore = await selection(page)
+    await clickModel(
+      page,
+      { x: fast.xMm + fast.widthMm / 2, y: fast.yMm + fast.heightMm / 2 },
+      { modifiers: ['Control'] },
+    )
+    expect(await selection(page)).toEqual(selectionBefore)
+
+    // Hovering shows the padlock; clicking it unlocks the object again.
+    await clickModel(page, { x: fast.xMm + fast.widthMm / 2, y: fast.yMm + fast.heightMm / 2 })
+    const centre = await toScreen(page, fast.xMm + fast.widthMm / 2, fast.yMm + fast.heightMm / 2)
+    await page.mouse.move(centre.x - 200, centre.y - 120)
+    await page.mouse.move(centre.x, centre.y, { steps: 8 })
+    await expect(page.getByTestId('lock-badge')).toBeVisible()
+    await page.mouse.click(centre.x, centre.y)
+    expect((await objectByName(page, 'Fast')).locked).toBe(false)
+  })
+
+  test('24: guides are created from the rulers, snap, lock and take an exact position', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page, 300, 200)
+
+    // A click in the top ruler makes a vertical guide, the left ruler a
+    // horizontal one.
+    await clickRuler(page, 'top', 1200)
+    await clickRuler(page, 'left', 700)
+    let doc = await getDoc(page)
+    expect(doc.guides.map((g) => g.axis).sort()).toEqual(['x', 'y'])
+    const vertical = doc.guides.find((g) => g.axis === 'x')!
+    expect(vertical.posMm).toBe(1200)
+
+    // Objects snap to a guide.
+    await createObject(page, { name: 'Bilde', widthCm: 40, heightCm: 40 })
+    const before = await objectByName(page, 'Bilde')
+    await dragModel(
+      page,
+      { x: before.xMm + before.widthMm / 2, y: before.yMm + before.heightMm / 2 },
+      { x: 1206, y: before.yMm + before.heightMm / 2 },
+    )
+    expect((await objectByName(page, 'Bilde')).xMm + 200).toBe(1200)
+
+    // A single click locks the guide in place; a drag then leaves it alone.
+    let p = await toScreen(page, vertical.posMm, 1800)
+    await page.mouse.click(p.x, p.y)
+    await expect
+      .poll(async () => (await getDoc(page)).guides.find((g) => g.axis === 'x')!.locked)
+      .toBe(true)
+    await page.waitForTimeout(600)
+    await dragModel(page, { x: vertical.posMm, y: 1800 }, { x: vertical.posMm + 400, y: 1800 })
+    expect((await getDoc(page)).guides.find((g) => g.axis === 'x')!.posMm).toBe(1200)
+
+    // Clicking again unlocks it.
+    await page.waitForTimeout(600)
+    await page.mouse.click(p.x, p.y)
+    await expect
+      .poll(async () => (await getDoc(page)).guides.find((g) => g.axis === 'x')!.locked)
+      .toBe(false)
+
+    // Double clicking opens the exact-position popover, measured from either
+    // edge, and never changes the lock state on its way in.
+    await page.waitForTimeout(600)
+    p = await toScreen(page, 1200, 1800)
+    await page.mouse.dblclick(p.x, p.y)
+    await expect(page.getByTestId('guide-popover')).toBeVisible()
+    expect((await getDoc(page)).guides.find((g) => g.axis === 'x')!.locked).toBe(false)
+    await page.getByTestId('guide-origin-end').click()
+    await page.getByTestId('guide-position').fill('50')
+    await page.getByTestId('guide-position').press('Enter')
+    expect((await getDoc(page)).guides.find((g) => g.axis === 'x')!.posMm).toBe(2500)
+
+    await page.getByTestId('guide-remove').click()
+    doc = await getDoc(page)
+    expect(doc.guides.filter((g) => g.axis === 'x')).toHaveLength(0)
+  })
+
+  test('25: the measure tool draws lines that snap and report their length', async ({ page }) => {
+    const errors = await gotoApp(page)
+    await completeSetup(page, 300, 200)
+    await createObject(page, { name: 'Bilde', widthCm: 60, heightCm: 40 })
+    const bilde = await objectByName(page, 'Bilde')
+
+    // The keyboard shortcut switches tool; the canvas stops selecting objects.
+    await page.keyboard.press('m')
+    await expect(page.getByTestId('measure-tool')).toHaveAttribute('aria-pressed', 'true')
+
+    // A drag near the object's top edge snaps both endpoints to it.
+    await dragModel(page, { x: bilde.xMm - 300, y: bilde.yMm + 4 }, { x: bilde.xMm - 3, y: bilde.yMm + 4 })
+    let doc = await getDoc(page)
+    expect(doc.measureLines).toHaveLength(1)
+    expect(doc.measureLines[0].y1Mm).toBe(bilde.yMm)
+    expect(doc.measureLines[0].x2Mm).toBe(bilde.xMm)
+    // Level, so it is measured horizontally only.
+    expect(doc.measureLines[0].y2Mm).toBe(bilde.yMm)
+
+    // Labels appear on hover and disappear again.
+    const mid = await toScreen(page, (doc.measureLines[0].x1Mm + bilde.xMm) / 2, bilde.yMm)
+    await page.mouse.move(mid.x, mid.y - 200, { steps: 6 })
+    await expect(page.getByTestId('measure-label')).toBeHidden()
+    await page.mouse.move(mid.x, mid.y, { steps: 6 })
+    await expect(page.getByTestId('measure-label')).toBeVisible()
+    await expect(page.getByTestId('measure-components')).toBeHidden()
+
+    // Clicking pins them, so they survive the pointer leaving.
+    await page.mouse.click(mid.x, mid.y)
+    await expect.poll(async () => (await getDoc(page)).measureLines[0].pinned).toBe(true)
+    await page.mouse.move(mid.x, mid.y - 200)
+    await expect(page.getByTestId('measure-label')).toBeVisible()
+
+    // A diagonal shows its two vector components as well.
+    await dragModel(page, { x: 400, y: 1600 }, { x: 1400, y: 1900 }, { modifiers: ['Alt'] })
+    doc = await getDoc(page)
+    expect(doc.measureLines).toHaveLength(2)
+    const diagonal = doc.measureLines[1]
+    const dmid = await toScreen(
+      page,
+      (diagonal.x1Mm + diagonal.x2Mm) / 2,
+      (diagonal.y1Mm + diagonal.y2Mm) / 2,
+    )
+    await page.mouse.move(dmid.x, dmid.y - 80)
+    await page.mouse.move(dmid.x, dmid.y, { steps: 6 })
+    await expect(page.getByTestId('measure-components')).toBeVisible()
+    await expect(page.getByTestId('measure-label-x')).toBeVisible()
+    await expect(page.getByTestId('measure-label-y')).toBeVisible()
+
+    // Escape returns to selecting, and objects respond again.
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('measure-tool')).toHaveAttribute('aria-pressed', 'false')
+    await clickModel(page, { x: bilde.xMm + bilde.widthMm / 2, y: bilde.yMm + bilde.heightMm / 2 })
+    expect(await selection(page)).toEqual([bilde.id])
+    expect(errors).toEqual([])
   })
 
   test('12: the project survives a reload', async ({ page }) => {

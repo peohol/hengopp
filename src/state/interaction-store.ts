@@ -1,11 +1,21 @@
 import { create } from 'zustand'
+import type { GuideAxis } from '@/models/guide'
 import type { Rect } from '@/geometry/bounds'
 import type { SnapGuide } from '@/geometry/snapping'
 
 /** Transient geometry used while dragging/resizing. Never written to history. */
 export type PreviewGeometry = { xMm: number; yMm: number; widthMm: number; heightMm: number }
 
-export type InteractionMode = 'idle' | 'drag' | 'resize' | 'marquee' | 'pan'
+export type InteractionMode = 'idle' | 'drag' | 'resize' | 'marquee' | 'pan' | 'guide' | 'measure'
+
+/** Which tool the canvas is in. `measure` draws measuring lines instead. */
+export type ToolId = 'select' | 'measure'
+
+/** Guide line previewed under the pointer while a ruler is hovered. */
+export type GuidePreview = { axis: GuideAxis; posMm: number }
+
+/** Endpoints of the measuring line currently being drawn. */
+export type MeasureDraft = { x1Mm: number; y1Mm: number; x2Mm: number; y2Mm: number }
 
 export type InteractionStore = {
   /** Entity ids (objects or groups) selected at the active group level. */
@@ -18,6 +28,7 @@ export type InteractionStore = {
   /** Touch-friendly multi-select toggle. */
   multiSelectMode: boolean
 
+  tool: ToolId
   mode: InteractionMode
   preview: Record<string, PreviewGeometry>
   guides: { x?: SnapGuide; y?: SnapGuide }
@@ -27,6 +38,17 @@ export type InteractionStore = {
   snapSuspended: boolean
   spacePanArmed: boolean
 
+  /** Guide line previewed while a ruler is hovered, before the click. */
+  guidePreview: GuidePreview | null
+  hoverGuideId: string | null
+  /** Guide last touched. Gives touch users the highlight hovering would. */
+  activeGuideId: string | null
+  /** Live position of the guide being dragged. */
+  guideDrag: { id: string; posMm: number } | null
+
+  hoverMeasureId: string | null
+  measureDraft: MeasureDraft | null
+
   setSelection: (ids: string[], keyId?: string | null) => void
   toggleSelection: (id: string) => void
   addToSelection: (ids: string[], keyId?: string | null) => void
@@ -35,6 +57,7 @@ export type InteractionStore = {
   setHover: (id: string | null) => void
   setMultiSelectMode: (on: boolean) => void
 
+  setTool: (tool: ToolId) => void
   setMode: (mode: InteractionMode) => void
   setPreview: (preview: Record<string, PreviewGeometry>) => void
   clearPreview: () => void
@@ -42,6 +65,14 @@ export type InteractionStore = {
   setMarquee: (rect: Rect | null, hits?: string[]) => void
   setSnapSuspended: (on: boolean) => void
   setSpacePanArmed: (on: boolean) => void
+
+  setGuidePreview: (preview: GuidePreview | null) => void
+  setHoverGuide: (id: string | null) => void
+  setActiveGuide: (id: string | null) => void
+  setGuideDrag: (drag: { id: string; posMm: number } | null) => void
+  setHoverMeasure: (id: string | null) => void
+  setMeasureDraft: (draft: MeasureDraft | null) => void
+
   endInteraction: () => void
 }
 
@@ -52,6 +83,7 @@ export const useInteractionStore = create<InteractionStore>((set, get) => ({
   hoverId: null,
   multiSelectMode: false,
 
+  tool: 'select',
   mode: 'idle',
   preview: {},
   guides: {},
@@ -59,6 +91,14 @@ export const useInteractionStore = create<InteractionStore>((set, get) => ({
   marqueeHits: [],
   snapSuspended: false,
   spacePanArmed: false,
+
+  guidePreview: null,
+  hoverGuideId: null,
+  activeGuideId: null,
+  guideDrag: null,
+
+  hoverMeasureId: null,
+  measureDraft: null,
 
   setSelection: (ids, keyId) =>
     set({ selection: ids, keyId: keyId !== undefined ? keyId : (ids[ids.length - 1] ?? null) }),
@@ -90,6 +130,13 @@ export const useInteractionStore = create<InteractionStore>((set, get) => ({
 
   setMultiSelectMode: (on) => set({ multiSelectMode: on }),
 
+  // Switching tools drops the other tool's transient affordances, so nothing
+  // from the previous mode lingers over the new one.
+  setTool: (tool) => {
+    if (get().tool === tool) return
+    set({ tool, hoverMeasureId: null, measureDraft: null, guidePreview: null })
+  },
+
   setMode: (mode) => set({ mode }),
   setPreview: (preview) => set({ preview }),
   clearPreview: () => set({ preview: {} }),
@@ -98,7 +145,32 @@ export const useInteractionStore = create<InteractionStore>((set, get) => ({
   setSnapSuspended: (on) => set({ snapSuspended: on }),
   setSpacePanArmed: (on) => set({ spacePanArmed: on }),
 
-  endInteraction: () => set({ mode: 'idle', preview: {}, guides: {}, marquee: null, marqueeHits: [] }),
+  setGuidePreview: (preview) => {
+    const current = get().guidePreview
+    if (current === preview) return
+    if (current && preview && current.axis === preview.axis && current.posMm === preview.posMm) return
+    set({ guidePreview: preview })
+  },
+  setHoverGuide: (id) => {
+    if (get().hoverGuideId !== id) set({ hoverGuideId: id })
+  },
+  setActiveGuide: (id) => set({ activeGuideId: id }),
+  setGuideDrag: (drag) => set({ guideDrag: drag }),
+  setHoverMeasure: (id) => {
+    if (get().hoverMeasureId !== id) set({ hoverMeasureId: id })
+  },
+  setMeasureDraft: (draft) => set({ measureDraft: draft }),
+
+  endInteraction: () =>
+    set({
+      mode: 'idle',
+      preview: {},
+      guides: {},
+      marquee: null,
+      marqueeHits: [],
+      guideDrag: null,
+      measureDraft: null,
+    }),
 }))
 
 export const selectPreviewFor = (id: string) => (s: InteractionStore) => s.preview[id]

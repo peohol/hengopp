@@ -156,4 +156,40 @@ test.describe('Narrow, touch-capable viewport', () => {
     await expect(page.getByTestId('object-dialog')).toBeVisible()
     await expect(page.getByTestId('object-name')).toHaveValue('Bilde')
   })
+
+  test('guides work without hovering: tap a ruler, drag the grip, double tap to type', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page, 300, 200)
+
+    // Tapping a ruler creates the guide outright — there is no preview step to
+    // hover through on touch.
+    const ruler = (await page.getByTestId('ruler-left').boundingBox())!
+    const at = await toScreen(page, 0, 1000)
+    await page.touchscreen.tap(ruler.x + ruler.width / 2, at.y)
+    let doc = await getDoc(page)
+    expect(doc.guides).toHaveLength(1)
+    expect(doc.guides[0].axis).toBe('y')
+
+    // The grip is always visible, so there is something to aim at.
+    await expect(page.getByTestId(`guide-hit-${doc.guides[0].id}`)).toBeAttached()
+
+    // A tap toggles the lock; a drag moves it.
+    const on = await toScreen(page, 1500, doc.guides[0].posMm)
+    await page.touchscreen.tap(on.x, on.y)
+    await expect.poll(async () => (await getDoc(page)).guides[0].locked).toBe(true)
+    await page.waitForTimeout(600)
+    await page.touchscreen.tap(on.x, on.y)
+    await expect.poll(async () => (await getDoc(page)).guides[0].locked).toBe(false)
+
+    // Double tap opens the exact-position popover.
+    await page.waitForTimeout(600)
+    await page.touchscreen.tap(on.x, on.y)
+    await page.touchscreen.tap(on.x, on.y)
+    await expect(page.getByTestId('guide-popover')).toBeVisible()
+    await page.getByTestId('guide-position').fill('40')
+    await page.getByTestId('guide-position').press('Enter')
+    doc = await getDoc(page)
+    expect(doc.guides[0].posMm).toBe(400)
+    expect(doc.guides[0].locked).toBe(false)
+  })
 })
