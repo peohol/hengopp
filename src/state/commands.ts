@@ -212,7 +212,9 @@ export function reorderSelection(op: ZOrderOp): void {
 export function selectAllOnLevel(): void {
   const { activeGroupId, setSelection } = interaction()
   const doc = project().doc
-  const ids = entitiesAtLevel(doc, activeGroupId)
+  // "Select all" is a bulk gesture, like the marquee: locked entities stay out
+  // of it, so nothing that follows can act on them by accident.
+  const ids = unlockedEntities(doc, entitiesAtLevel(doc, activeGroupId))
   setSelection(ids, ids[ids.length - 1] ?? null)
 }
 

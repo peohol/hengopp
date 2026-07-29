@@ -263,6 +263,10 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
     (e: React.PointerEvent<SVGSVGElement>, handle: HandleId) => {
       const doc = useProjectStore.getState().doc
       const { selection } = useInteractionStore.getState()
+      // A resize maps the whole bounding box, so a single locked member would
+      // be dragged along by it. The handles are already withdrawn in that case;
+      // this is the guarantee behind them.
+      if (selection.some((id) => isEntityLocked(doc, id))) return
       const bounds = entitiesBounds(doc, selection)
       if (!bounds) return
       const objectIds = objectIdsOfEntities(doc, selection)
@@ -748,16 +752,9 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
         return
       }
 
-      // Guide lines: drag to move, click to lock, double click for the exact
-      // position. A locked guide can still be clicked — that is how it unlocks.
-      const guideId = attributeFromEvent(e.target, 'data-guide-id')
-      if (guideId) {
-        e.preventDefault()
-        svg.setPointerCapture(e.pointerId)
-        startGuideDrag(e, guideId)
-        return
-      }
-
+      // The measure tool owns every press on the canvas — including one that
+      // lands on a guide, which is exactly where a measurement often starts.
+      // Guides are moved again by switching back to the select tool.
       if (interaction.tool === 'measure') {
         e.preventDefault()
         const deleteId = attributeFromEvent(e.target, 'data-measure-delete')
@@ -767,6 +764,16 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
         }
         svg.setPointerCapture(e.pointerId)
         startMeasure(e, attributeFromEvent(e.target, 'data-measure-id'))
+        return
+      }
+
+      // Guide lines: drag to move, click to lock, double click for the exact
+      // position. A locked guide can still be clicked — that is how it unlocks.
+      const guideId = attributeFromEvent(e.target, 'data-guide-id')
+      if (guideId) {
+        e.preventDefault()
+        svg.setPointerCapture(e.pointerId)
+        startGuideDrag(e, guideId)
         return
       }
 

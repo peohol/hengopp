@@ -165,7 +165,12 @@ snapper som vanlig til det. Ved hovering vises en hengelås i objektets sentrum 
 100 % under pekeren); et klikk på den låser opp igjen.
 
 En gruppe regnes som låst så snart ett av objektene i den er det – ellers ville en flytting av
-gruppen ha flyttet det låste objektet indirekte.
+gruppen ha flyttet det låste objektet indirekte. Av samme grunn forsvinner skaleringshåndtakene så
+snart **ett** objekt i utvalget er låst: en skalering kartlegger hele den omsluttende boksen, så det
+finnes ingen måte å skalere resten uten å dra det låste objektet med seg.
+
+`Ctrl/Cmd + A` hopper over låste objekter, akkurat som seleksjonsrektangelet og `Ctrl`-klikk gjør.
+Alle tre er masseutvalg, og en lås skal holde objektet utenfor dem.
 
 #### Linjaler
 
@@ -197,6 +202,10 @@ Linjene tegnes prikkete, der flaterutenettet er stiplet, så de aldri forveksles
 Snapping vinner over stegkvantiseringen: uten det ville en linje aldri kunne legges nøyaktig på en
 objektkant som ikke tilfeldigvis er et multiplum av steget.
 
+Gjøres flaten mindre, følger skillelinjene med kanten inn (`setSurfaceSize()`). Objekter blir
+liggende og markeres som utenfor flaten i stedet, men en skillelinje utenfor flaten ville verken
+vært synlig eller mulig å ta tak i igjen.
+
 Dobbeltklikk endrer aldri låsen. Det første klikket i paret slår den av eller på, og det andre
 setter den tilbake igjen før popoveren åpnes – ellers ville et dobbeltklikk for å skrive inn en
 posisjon ha låst linjen på veien inn.
@@ -221,6 +230,10 @@ Klassifiseringen gjøres i millimeter, ikke i piksler, så den endrer seg aldri 
 Etikettene forsvinner når pekeren forlater linjen; et klikk fester dem, og et nytt klikk løsner dem
 igjen. Målelinjene tar bare imot pekeren mens verktøyet er aktivt, slik at de aldri stjeler et klikk
 som var ment for et objekt.
+
+Mens verktøyet er aktivt eier det hvert trykk på lerretet – også et som lander på en skillelinje,
+som er nettopp der en måling ofte starter. Skillelinjene lyser fortsatt opp ved hovering, men flyttes
+først når man går tilbake til valgverktøyet.
 
 ### Persistens
 

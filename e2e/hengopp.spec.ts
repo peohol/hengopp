@@ -792,6 +792,12 @@ test.describe('Hengopp', () => {
     )
     expect(await selection(page)).toEqual(selectionBefore)
 
+    // "Select all" leaves it out, so a resize can never take it along. Without
+    // that, the handles would map the whole bounding box over it.
+    await page.keyboard.press('Control+a')
+    expect(await selection(page)).toEqual([(await objectByName(page, 'Løs')).id])
+    await expect(page.getByTestId('handles')).toBeVisible()
+
     // Hovering shows the padlock; clicking it unlocks the object again.
     await clickModel(page, { x: fast.xMm + fast.widthMm / 2, y: fast.yMm + fast.heightMm / 2 })
     const centre = await toScreen(page, fast.xMm + fast.widthMm / 2, fast.yMm + fast.heightMm / 2)
@@ -907,6 +913,16 @@ test.describe('Hengopp', () => {
     await expect(page.getByTestId('measure-components')).toBeVisible()
     await expect(page.getByTestId('measure-label-x')).toBeVisible()
     await expect(page.getByTestId('measure-label-y')).toBeVisible()
+
+    // A measurement can start right on a guide: the tool owns the press, so the
+    // guide never intercepts it and drags itself instead.
+    await clickRuler(page, 'left', 1700)
+    const guide = (await getDoc(page)).guides[0]
+    await dragModel(page, { x: 300, y: guide.posMm + 3 }, { x: 1500, y: guide.posMm + 3 })
+    doc = await getDoc(page)
+    expect(doc.guides[0].posMm).toBe(guide.posMm)
+    expect(doc.measureLines).toHaveLength(3)
+    expect(doc.measureLines[2].y1Mm).toBe(guide.posMm)
 
     // Escape returns to selecting, and objects respond again.
     await page.keyboard.press('Escape')

@@ -16,6 +16,8 @@ type Props = {
   sx: (mm: number) => number
   sy: (mm: number) => number
   coarsePointer: boolean
+  /** False while another tool owns the canvas: guides light up, but do not move. */
+  draggable: boolean
 }
 
 /**
@@ -27,7 +29,7 @@ type Props = {
  * a convenience; on touch, where nothing can be hovered, it is the affordance
  * that says "this can be dragged".
  */
-export function GuidesLayer({ guides, surface, sx, sy, coarsePointer }: Props) {
+export function GuidesLayer({ guides, surface, sx, sy, coarsePointer, draggable }: Props) {
   const hoverGuideId = useInteractionStore((s) => s.hoverGuideId)
   const activeGuideId = useInteractionStore((s) => s.activeGuideId)
   const guideDrag = useInteractionStore((s) => s.guideDrag)
@@ -55,7 +57,15 @@ export function GuidesLayer({ guides, surface, sx, sy, coarsePointer }: Props) {
             data-guide-id={guide.id}
             data-testid={`guide-${guide.axis}${guide.locked ? '-locked' : ''}`}
             className={`guide${guide.locked ? ' is-locked' : ''}`}
-            style={{ cursor: guide.locked ? 'pointer' : vertical ? 'ew-resize' : 'ns-resize' }}
+            style={{
+              cursor: !draggable
+                ? 'inherit'
+                : guide.locked
+                  ? 'pointer'
+                  : vertical
+                    ? 'ew-resize'
+                    : 'ns-resize',
+            }}
             opacity={lit || dragging ? 1 : GUIDE_OPACITY}
           >
             <title>

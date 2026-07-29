@@ -190,6 +190,27 @@ export function removeGuide(draft: HengoppProject, id: string): void {
   draft.guides = draft.guides.filter((g) => g.id !== id)
 }
 
+/** Pull every guide back inside the surface. */
+export function clampGuidesToSurface(draft: HengoppProject): void {
+  for (const guide of draft.guides) {
+    guide.posMm = clampGuidePos(guide.posMm, surfaceExtentFor(draft.surface, guide.axis))
+  }
+}
+
+/**
+ * Resize the surface. Objects are deliberately left where they are and flagged
+ * as outside instead, but a guide has nowhere to be outside the surface: it
+ * would be invisible and unreachable, so it follows the edge in.
+ */
+export function setSurfaceSize(
+  draft: HengoppProject,
+  size: { widthMm?: number; heightMm?: number },
+): void {
+  if (size.widthMm !== undefined) draft.surface.widthMm = size.widthMm
+  if (size.heightMm !== undefined) draft.surface.heightMm = size.heightMm
+  clampGuidesToSurface(draft)
+}
+
 /* ---------------------------------------------------------- Measure lines */
 
 export function addMeasureLine(draft: HengoppProject, line: Omit<MeasureLine, 'id'>): string {

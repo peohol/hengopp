@@ -9,7 +9,7 @@ import {
 } from '@/geometry/guides'
 import { buildSnapTargets, computeSnap, rectSnapCandidates } from '@/geometry/snapping'
 import { DEFAULT_SURFACE_GRID } from '@/models/grid'
-import { addGuide, moveGuide, removeGuide, toggleGuideLock } from '@/state/doc-actions'
+import { addGuide, moveGuide, removeGuide, setSurfaceSize, toggleGuideLock } from '@/state/doc-actions'
 import { makeObject, makeProject } from './helpers'
 
 const SURFACE = { widthMm: 1000, heightMm: 800, color: '#ffffff' }
@@ -140,6 +140,32 @@ describe('guides as snap targets', () => {
       excludeGuideId: 'g1',
     })
     expect(targets.x).toHaveLength(0)
+  })
+})
+
+describe('shrinking the surface', () => {
+  it('pulls the guides back inside, in the same action', () => {
+    const project = makeProject([], [], {
+      guides: [
+        { id: 'gx', axis: 'x' as const, posMm: 900, locked: false },
+        { id: 'gy', axis: 'y' as const, posMm: 700, locked: true },
+      ],
+    })
+    // A guide outside the surface would be neither visible nor grabbable, so
+    // it follows the edge in rather than waiting for the next reload.
+    const smaller = produce(project, (draft) => setSurfaceSize(draft, { widthMm: 500, heightMm: 400 }))
+    expect(smaller.guides[0].posMm).toBe(500)
+    expect(smaller.guides[1].posMm).toBe(400)
+    // Clamping is not a move: a locked guide is still locked afterwards.
+    expect(smaller.guides[1].locked).toBe(true)
+  })
+
+  it('leaves guides alone when the surface grows', () => {
+    const project = makeProject([], [], {
+      guides: [{ id: 'gx', axis: 'x' as const, posMm: 400, locked: false }],
+    })
+    const larger = produce(project, (draft) => setSurfaceSize(draft, { widthMm: 4000 }))
+    expect(larger.guides[0].posMm).toBe(400)
   })
 })
 

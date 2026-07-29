@@ -71,21 +71,25 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport, coarsePo
 
   const levelIds = useMemo(() => entitiesAtLevel(doc, activeGroupId), [doc, activeGroupId])
 
-  const selectionLocked = selection.length > 0 && selection.every((id) => isEntityLocked(doc, id))
+  // One locked member is enough to withdraw the handles: a resize maps the
+  // whole bounding box, so there is no way to scale the rest without dragging
+  // the locked object along.
+  const selectionHasLocked = selection.some((id) => isEntityLocked(doc, id))
   // Distances are part of what a lock freezes on the canvas, so a locked
   // selection shows no temporary measurements to toggle.
   const showTemporaryMeasurements =
-    selection.length === 1 && mode === 'idle' && tool === 'select' && !selectionLocked
+    selection.length === 1 && mode === 'idle' && tool === 'select' && !selectionHasLocked
 
   // Lock badges sit on the objects of whichever entity is hovered, so a locked
-  // object inside a group is reachable without entering the group first.
+  // object inside a group is reachable without entering the group first. The
+  // measure tool owns every press on the canvas, so the badge stands down.
   const lockedHovered = useMemo(() => {
-    if (!hoverId || mode !== 'idle') return []
+    if (!hoverId || mode !== 'idle' || tool !== 'select') return []
     return objectIdsOfEntities(doc, [hoverId])
       .map((id) => doc.objects[id])
       .filter((o) => o?.locked)
       .map((o) => ({ id: o.id, rect: previewedRect(o, preview[o.id]) }))
-  }, [doc, hoverId, mode, preview])
+  }, [doc, hoverId, mode, preview, tool])
 
   const togglePin = (entityId: string, side: MeasurementSide) => {
     useProjectStore.getState().commit((draft) => togglePinnedMeasurement(draft, entityId, side))
@@ -252,6 +256,7 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport, coarsePo
         sx={sx}
         sy={sy}
         coarsePointer={coarsePointer}
+        draggable={tool === 'select'}
       />
 
       {/* Free measuring lines. */}
@@ -272,7 +277,7 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport, coarsePo
       })}
 
       {/* Resize handles for the whole selection. A locked selection has none. */}
-      {selectionBounds && selection.length > 0 && mode !== 'marquee' && !selectionLocked && tool === 'select' ? (
+      {selectionBounds && selection.length > 0 && mode !== 'marquee' && !selectionHasLocked && tool === 'select' ? (
         <g data-testid="handles">
           {HANDLES.map((handle) => {
             const p = handlePoint(selectionBounds, handle)

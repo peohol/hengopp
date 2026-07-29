@@ -8,6 +8,7 @@ import {
   distributeSelection,
   movableSelection,
   nudgeSelection,
+  selectAllOnLevel,
   selectionIsLocked,
   toggleSelectionLock,
 } from '@/state/commands'
@@ -107,6 +108,14 @@ describe('locked objects on the canvas', () => {
       false,
     )
     expect(doc().objects.b.xMm).toBe(150)
+  })
+
+  it('is left out of "select all", so no bulk action can reach it', () => {
+    __resetProjectStore(
+      makeProject([makeObject({ id: 'a', locked: true }), makeObject({ id: 'b' }), makeObject({ id: 'c' })]),
+    )
+    selectAllOnLevel()
+    expect(useInteractionStore.getState().selection).toEqual(['b', 'c'])
   })
 
   it('remains a snap target for everyone else', () => {
