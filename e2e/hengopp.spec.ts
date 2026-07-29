@@ -97,6 +97,38 @@ test.describe('Hengopp', () => {
     expect(await historyLength(page)).toBe(historyBeforeInput + 1)
   })
 
+  test('3b: new objects get distinct palette colours, overridable from the grid', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page)
+
+    await createObject(page, { name: 'En' })
+    await createObject(page, { name: 'To' })
+    await createObject(page, { name: 'Tre' })
+
+    const doc = await getDoc(page)
+    const fills = Object.values(doc.objects).map((o) => o.fillColor)
+    expect(fills).toHaveLength(3)
+    // Automatic colours are always distinct, and always from the palette.
+    expect(new Set(fills).size).toBe(3)
+    for (const fill of fills) expect(fill).toMatch(/^#[0-9a-f]{6}$/)
+
+    // The grid is 12 hues × 4 brightness levels, and a click overrides the pick.
+    await page.getByTestId('new-object').click()
+    const grid = page.getByTestId('object-fill')
+    await expect(grid.locator('.color-grid__cell')).toHaveCount(48)
+    await expect(page.getByText('Farge', { exact: true })).toBeVisible()
+    // The derived border is only shown in the preview, not among the settings.
+    await expect(page.getByTestId('object-border')).toHaveCount(0)
+
+    const target = grid.locator('.color-grid__cell').nth(13)
+    const targetColor = await target.getAttribute('data-color')
+    await target.click()
+    await page.getByTestId('object-name').fill('Fire')
+    await page.getByTestId('object-save').click()
+
+    expect((await objectByName(page, 'Fire')).fillColor).toBe(targetColor)
+  })
+
   test('4: resize with a corner handle', async ({ page }) => {
     await gotoApp(page)
     await completeSetup(page)

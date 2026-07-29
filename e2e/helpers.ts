@@ -3,7 +3,17 @@ import { expect, type Page } from '@playwright/test'
 export type DocSnapshot = {
   objects: Record<
     string,
-    { id: string; name: string; xMm: number; yMm: number; widthMm: number; heightMm: number; parentGroupId: string | null; zIndex: number }
+    {
+      id: string
+      name: string
+      xMm: number
+      yMm: number
+      widthMm: number
+      heightMm: number
+      fillColor: string
+      parentGroupId: string | null
+      zIndex: number
+    }
   >
   groups: Record<string, { id: string; name: string; childObjectIds: string[]; childGroupIds: string[] }>
   pinnedMeasurements: { id: string; objectId: string; side: string }[]

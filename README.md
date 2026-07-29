@@ -103,6 +103,20 @@ Fordeling er en egen meny med samme oppbygning: referanse (de ytterste objektene
 hva avstanden måles mellom (kantene eller ankerpunktene), og – ved flatereferanse – om det skal
 være like mye luft ytterst.
 
+#### Objektfarger
+
+Objekter velger farge fra en lukket palett (`src/models/palette.ts`): 12 kulører × 4 lysstyrkenivåer,
+alle med samme metning (40 %). Nivåene holder seg unna ytterpunktene, så hverken svart eller hvitt er
+med. En lukket palett gjør at en tegning henger sammen visuelt uansett hvem som lager den, og 48
+farger holder likevel i praksis. Modalen viser paletten som et rutenett med kulørene bortover og
+lysstyrken nedover (`ColorGrid`); kantfargen utledes fortsatt av fyllet (`deriveBorderColor`) og
+vises bare i forhåndsvisningen, ikke som en egen innstilling.
+
+Et nytt objekt får automatisk en tilfeldig palettfarge som ingen andre objekter bruker
+(`pickObjectColor`), slik at et prosjekt blir variert uten at brukeren må tenke på det. Er alle 48
+opptatt, starter vi forfra på hele paletten. Valget kan alltid overstyres i rutenettet – flere
+objekter i samme farge er lov, det er bare ikke standarden.
+
 #### Målelapper
 
 En målelapp tegnes som et bånd med spiss tupp i hver ende, langs sin egen målelinje, slik at linja
@@ -211,7 +225,8 @@ rulling som siste sikring på svært små skjermer, slik at ingen kontroll blir 
 - **Enhetstester** (`src/tests/`, Vitest): enheter og parsing, rutenett inkl. desimale celler og
   transponering, bounding box og skalering, snapping (terskel, hysterese, prioritet, ekskludering),
   justering (begge akser, begge referanser, begge midtstillingsbaser), fordeling (alle modi),
-  plassering av målelapper, ankerets snaplinjer og terskel, historikk og persistens.
+  plassering av målelapper, ankerets snaplinjer og terskel, objektpaletten og automatisk fargevalg,
+  historikk og persistens.
 - **Ende-til-ende** (`e2e/`, Playwright): to prosjekter – `desktop` (1440 × 900) og `narrow-touch`
   (390 × 780 med touch). Dekker oppsett, oppretting, flytting, skalering, undo/redo, flervalg,
   justering, fordeling, gruppering, målelinjer, lagrekkefølge, rutenettoppsett, zoom/panorering,

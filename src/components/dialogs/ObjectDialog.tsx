@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '@/components/common/Modal'
 import { LengthField } from '@/components/common/NumberField'
-import { ColorField } from '@/components/common/ColorField'
+import { ColorGrid } from '@/components/common/ColorGrid'
 import { Segmented } from '@/components/common/Segmented'
 import { GridEditor } from '@/components/common/GridEditor'
-import { DEFAULT_ANCHOR, DEFAULT_OBJECT_FILL, type Anchor, type SceneObject, type Shape } from '@/models/object'
+import { DEFAULT_ANCHOR, type Anchor, type SceneObject, type Shape } from '@/models/object'
+import { pickObjectColor } from '@/models/palette'
 import { DEFAULT_OBJECT_GRID, type GridDefinition } from '@/models/grid'
 import { constrainAnchor } from '@/geometry/bounds'
 import { anchorSnapLines, anchorSnapThreshold, interiorGridLines } from '@/geometry/grid'
@@ -43,13 +44,14 @@ function draftFromObject(o: SceneObject): Draft {
   }
 }
 
-function emptyDraft(): Draft {
+/** A new object starts on a palette colour no other object is using yet. */
+function emptyDraft(usedColors: string[]): Draft {
   return {
     name: '',
     shape: 'rectangle',
     widthMm: 400,
     heightMm: 300,
-    fillColor: DEFAULT_OBJECT_FILL,
+    fillColor: pickObjectColor(usedColors),
     internalGrid: { ...DEFAULT_OBJECT_GRID },
     anchor: { ...DEFAULT_ANCHOR },
   }
@@ -72,7 +74,11 @@ function ObjectEditor({ state }: { state: NonNullable<ObjectDialogState> }) {
   const nameRef = useRef<HTMLInputElement>(null)
 
   const existing = state.mode === 'edit' ? doc.objects[state.objectId] : undefined
-  const [initial] = useState<Draft>(() => (existing ? draftFromObject(existing) : emptyDraft()))
+  const [initial] = useState<Draft>(() =>
+    existing
+      ? draftFromObject(existing)
+      : emptyDraft(Object.values(doc.objects).map((o) => o.fillColor)),
+  )
   const [draft, setDraft] = useState<Draft>(initial)
 
   const borderColor = deriveBorderColor(draft.fillColor)
@@ -227,23 +233,13 @@ function ObjectEditor({ state }: { state: NonNullable<ObjectDialogState> }) {
             />
           </div>
 
-          <div className="row">
-            <ColorField
-              label="Fyllfarge"
-              value={draft.fillColor}
-              testId="object-fill"
-              onChange={(fillColor) => setDraft({ ...draft, fillColor })}
-            />
-            <div className="field">
-              <span className="field__label">Border (beregnet)</span>
-              <div className="row" style={{ gap: 6 }}>
-                <span className="swatch" style={{ background: borderColor }} aria-hidden="true" />
-                <span className="hint" data-testid="object-border">
-                  {borderColor} · alltid 1 px
-                </span>
-              </div>
-            </div>
-          </div>
+          {/* The border is derived from the fill; the preview is where you see it. */}
+          <ColorGrid
+            label="Farge"
+            value={draft.fillColor}
+            testId="object-fill"
+            onChange={(fillColor) => setDraft({ ...draft, fillColor })}
+          />
 
           <details className="section" open>
             <summary>Internt rutenett</summary>
