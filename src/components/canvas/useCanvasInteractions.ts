@@ -716,10 +716,12 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
 
   const onWheel = useCallback(
     (e: React.WheelEvent<SVGSVGElement>) => {
-      // Ctrl/Cmd + wheel belongs to the browser's own zoom.
-      if (e.ctrlKey || e.metaKey) return
       e.preventDefault()
-      const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0016))
+      // A trackpad pinch arrives as Ctrl/Cmd + wheel with much smaller deltas.
+      // The browser's own zoom is switched off app-wide, so it drives the
+      // canvas zoom instead.
+      const perUnit = e.deltaMode === 1 ? 0.05 : e.ctrlKey || e.metaKey ? 0.01 : 0.0016
+      const factor = Math.exp(-e.deltaY * perUnit)
       useViewportStore.getState().zoomAt(toLocal(e.clientX, e.clientY), factor)
     },
     [toLocal],
@@ -735,7 +737,6 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
     const svg = svgRef.current
     if (!svg) return
     const handler = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) return
       e.preventDefault()
     }
     svg.addEventListener('wheel', handler, { passive: false })

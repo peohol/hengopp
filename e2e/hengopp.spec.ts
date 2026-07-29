@@ -464,6 +464,34 @@ test.describe('Hengopp', () => {
     await expect(page.getByTestId('zoom-percent')).toHaveValue('100')
   })
 
+  test('13b: a trackpad pinch zooms the canvas, never the browser', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page)
+    await page.getByTestId('zoom-fit').click()
+
+    const canvas = (await page.getByTestId('canvas').boundingBox())!
+    const scaleBefore = await page.evaluate(() => window.__hengopp!.viewport.getState().viewport.scale)
+
+    // A trackpad pinch reaches the page as Ctrl + wheel; the browser's own zoom
+    // is switched off, so the canvas takes it.
+    await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2)
+    await page.keyboard.down('Control')
+    await page.mouse.wheel(0, -120)
+    await page.keyboard.up('Control')
+    await page.waitForTimeout(60)
+
+    const scaleAfter = await page.evaluate(() => window.__hengopp!.viewport.getState().viewport.scale)
+    expect(scaleAfter).toBeGreaterThan(scaleBefore)
+
+    // Ctrl + wheel over the toolbar is swallowed, so the page never scales.
+    const prevented = await page.evaluate(() => {
+      const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, deltaY: -120 })
+      document.querySelector('[data-testid="toolbar"]')!.dispatchEvent(wheel)
+      return wheel.defaultPrevented
+    })
+    expect(prevented).toBe(true)
+  })
+
   test('14: marquee selects the objects fully inside the rectangle', async ({ page }) => {
     await gotoApp(page)
     await completeSetup(page)

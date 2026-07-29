@@ -106,6 +106,44 @@ test.describe('Narrow, touch-capable viewport', () => {
     expect(Object.keys((await getDoc(page)).groups)).toHaveLength(1)
   })
 
+  test('pinching the menu never zooms the browser', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page, 300, 200)
+
+    // The viewport meta tag rules out page zoom where the browser honours it.
+    const viewportMeta = await page.getAttribute('meta[name="viewport"]', 'content')
+    expect(viewportMeta).toContain('user-scalable=no')
+    expect(viewportMeta).toContain('maximum-scale=1')
+
+    // touch-action keeps panels scrollable but blocks pinch and double-tap zoom.
+    const touchAction = await page.evaluate(() => ({
+      body: getComputedStyle(document.body).touchAction,
+      canvas: getComputedStyle(document.querySelector('[data-testid="canvas"]')!).touchAction,
+    }))
+    expect(touchAction.body).toBe('pan-x pan-y')
+    expect(touchAction.canvas).toBe('none')
+
+    // The gestures CSS cannot reach are cancelled in JavaScript, also when they
+    // start on the top menu rather than on the canvas.
+    const prevented = await page.evaluate(() => {
+      const toolbar = document.querySelector('[data-testid="toolbar"]')!
+      const gesture = new Event('gesturestart', { bubbles: true, cancelable: true })
+      toolbar.dispatchEvent(gesture)
+
+      const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, deltaY: -120 })
+      toolbar.dispatchEvent(wheel)
+
+      const touch = (identifier: number, x: number) =>
+        new Touch({ identifier, target: toolbar, clientX: x, clientY: 20 })
+      const touches = [touch(1, 40), touch(2, 200)]
+      const move = new TouchEvent('touchmove', { bubbles: true, cancelable: true, touches, targetTouches: touches, changedTouches: touches })
+      toolbar.dispatchEvent(move)
+
+      return { gesture: gesture.defaultPrevented, wheel: wheel.defaultPrevented, touchmove: move.defaultPrevented }
+    })
+    expect(prevented).toEqual({ gesture: true, wheel: true, touchmove: true })
+  })
+
   test('double tap opens the edit dialog', async ({ page }) => {
     await gotoApp(page)
     await completeSetup(page, 300, 200)

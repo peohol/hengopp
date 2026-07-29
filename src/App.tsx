@@ -7,6 +7,7 @@ import { SetupDialog } from '@/components/dialogs/SetupDialog'
 import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
 import { HelpDialog } from '@/components/dialogs/HelpDialog'
 import { Notices } from '@/components/Notices'
+import { useBrowserZoom } from '@/hooks/useBrowserZoom'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { flushSave, useProjectStore } from '@/state/project-store'
 import { useUiStore } from '@/state/ui-store'
@@ -14,6 +15,7 @@ import { isOutsideSurface } from '@/components/canvas/scene-helpers'
 
 export function App() {
   useKeyboardShortcuts()
+  useBrowserZoom()
 
   const doc = useProjectStore((s) => s.doc)
   const storageNotice = useProjectStore((s) => s.storageNotice)
