@@ -169,7 +169,7 @@ handlinger, aldri under `pointermove`.
 | `Ctrl/Cmd + A` | Velg alle på aktivt gruppenivå |
 | `Escape` | Avbryt draoperasjon, lukk dialog, gå ett gruppenivå ut |
 | `Mellomrom` + dra, midtre museknapp + dra | Panorer |
-| Musehjul | Zoom rundt pekeren (`Ctrl/Cmd` + hjul går til nettleseren) |
+| Musehjul | Zoom rundt pekeren (`Ctrl/Cmd` + hjul, altså pinch på styreflate, zoomer også lerretet) |
 
 Under flytting: `Shift` låser til dominerende akse, `Alt` slår av snapping.
 Under skalering: `Shift` beholder forholdet, `Alt` skalerer fra sentrum (og slår av snapping).
@@ -179,6 +179,23 @@ Under skalering: `Shift` beholder forholdet, `Alt` skalerer fra sentrum (og slå
 Alle desktopfunksjoner som er avhengige av modifikatortaster har touch-alternativer:
 flervalgsmodus, snapping av/på og gruppehandlinger ligger i toppmenyen, håndtakene har 26 px
 trefflate, dobbelttapp åpner redigering, pinch zoomer og to fingre panorerer.
+
+## Zoom: bare lerretet, aldri siden
+
+Appen er et fast, vindusstort oppsett med eget zoomsystem på lerretet. Nettleserens sidezoom ville
+skalert menyen og dialogene også, og etterlatt en tilstand appen verken ser eller kan nullstille.
+Derfor er den slått av på alle veier inn – ikke bare over lerretet, men også over toppmenyen:
+
+- `user-scalable=no, maximum-scale=1` i `<meta name="viewport">` (Chrome/Android).
+- `touch-action: pan-x pan-y` på `html`, `body` og `#root`: paneler kan fortsatt rulles, men pinch
+  og dobbelttapp-zoom er utelukket. Lerretet har `touch-action: none` og håndterer selv pinch.
+- `useBrowserZoom()` (`src/hooks/useBrowserZoom.ts`) avbryter det CSS ikke rekker: Safaris
+  `gesturestart`/`gesturechange`/`gestureend`, hjulhendelser med `Ctrl`/`Cmd` (pinch på styreflate)
+  og `touchmove` med mer enn én finger.
+
+Over lerretet blir `Ctrl`/`Cmd` + hjul til lerretzoom i stedet for sidezoom. Nettleserens
+tastatursnarveier for zoom (`Ctrl/Cmd` + `+`/`-`/`0`) er reservert av nettleseren og kan ikke
+avbrytes av siden.
 
 ## Toppmeny og rulling
 

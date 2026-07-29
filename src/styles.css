@@ -44,6 +44,10 @@ body,
   margin: 0;
   /* The app is a fixed viewport-sized layout: the page itself never scrolls. */
   overflow: hidden;
+  /* Only the canvas zooms, never the page: `pan-x pan-y` keeps panels and the
+     toolbar scrollable but rules out pinch zoom and double-tap zoom anywhere
+     in the app. See useBrowserZoom() for the gestures CSS cannot reach. */
+  touch-action: pan-x pan-y;
 }
 
 body {
