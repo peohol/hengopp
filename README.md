@@ -67,7 +67,7 @@ src/geometry/
   snapping.ts      snapkandidater, snapmål, kandidatvalg med hysterese og semantisk prioritet
   alignment.ts     énakset justering mot flaten eller nøkkelobjektet
   distribution.ts  fordeling mot utvalg eller flate, kant- eller ankerbasert
-  resizing.ts      åtte håndtak, ratio-lås, skalering fra sentrum, mapping av barn
+  resizing.ts      åtte håndtak, ratio-lås med drivende dimensjon, skalering fra sentrum, mapping av barn
   groups.ts        nestede grupper, bounding box, nivåoppløsning, sykkelvern
   zorder.ts        lagrekkefølge for blokker, normalisering av z-verdier
   measurements.ts  fire avstander til flatens kanter
@@ -145,6 +145,32 @@ avstand brukes en semantisk prioritet (anker↔anker → lik kanttype → sentru
 snap beholdes til avstanden overstiger frigjøringsterskelen (hysterese), slik at guiden ikke
 flimrer. `Alt` deaktiverer snapping midlertidig.
 
+#### Endringssteg
+
+`movementStepMm` er ett felles steg for hele appen. Piltastene og pluss/minus-knappene bruker det
+alltid. `quantiseDrag` – **på for nye prosjekter** – lar det gjelde også når man drar i lerretet med
+mus eller finger, og da for **både posisjon og størrelse**: en dragning flytter i hele steg, og et
+håndtak endrer bredden eller høyden i hele steg. Lerretet gir dermed runde verdier, mens nøyaktig
+posisjon og størrelse skrives inn i feltene i menyen. Snapping regnes ut etter kvantiseringen og
+vinner over den, slik at en snappet kant treffer målet nøyaktig.
+
+Ved skalering fra sentrum (`Alt`) flytter begge kantene, så steget legges på halvparten hver, og
+størrelsen endres fortsatt i hele steg.
+
+##### Drivende dimensjon ved ratio-lås
+
+`Shift` beholder forholdet mellom bredde og høyde. Da kan bare én av dem endres i hele steg – den
+andre må beregnes fra forholdet. Hjørnehåndtakene velger den drivende dimensjonen ut fra
+dragningsvektoren (`ratioDriverForDrag`):
+
+| Dragning | Drivende | Beregnet |
+| --- | --- | --- |
+| mest loddrett (`abs(dy) > abs(dx)`) | høyden, i hele steg | bredden = høyden × forholdet |
+| mest vannrett (ellers) | bredden, i hele steg | høyden = bredden ÷ forholdet |
+
+Kanthåndtakene (`n`, `s`, `e`, `w`) kan bare endre sin egen dimensjon, så de driver alltid den –
+uansett hvilken vei pekeren beveger seg.
+
 ### Persistens
 
 Dokumentformatet er versjonert (`schemaVersion`) og valideres med Zod ved innlasting og import.
@@ -172,7 +198,8 @@ handlinger, aldri under `pointermove`.
 | Musehjul | Zoom rundt pekeren (`Ctrl/Cmd` + hjul, altså pinch på styreflate, zoomer også lerretet) |
 
 Under flytting: `Shift` låser til dominerende akse, `Alt` slår av snapping.
-Under skalering: `Shift` beholder forholdet, `Alt` skalerer fra sentrum (og slår av snapping).
+Under skalering: `Shift` beholder forholdet – den retningen du drar mest i, styrer og endres i hele
+steg – og `Alt` skalerer fra sentrum (og slår av snapping).
 
 ## Touch
 

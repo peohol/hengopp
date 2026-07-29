@@ -53,10 +53,41 @@ export function handlePoint(rect: Rect, h: HandleId): { x: number; y: number } {
   return { x, y }
 }
 
+/** The dimension a ratio-locked resize is driven by; the other is derived. */
+export type RatioDriver = 'width' | 'height'
+
+/**
+ * Which dimension a ratio-locked corner drag should drive: the one the pointer
+ * has travelled furthest along. Dragging mostly vertically therefore adjusts
+ * the height and computes the width from it, and vice versa. Everything else
+ * (the movement step in particular) then applies to that one dimension.
+ */
+export function ratioDriverForDrag(dxMm: number, dyMm: number): RatioDriver {
+  return Math.abs(dyMm) > Math.abs(dxMm) ? 'height' : 'width'
+}
+
+/**
+ * Resolve the driving dimension for a ratio-locked resize. Side handles can
+ * only change one dimension, so they always drive that one; corners use the
+ * caller's choice and otherwise fall back to whichever scale is largest.
+ */
+function resolveRatioDriver(
+  handle: HandleId,
+  preferred: RatioDriver | undefined,
+  sx: number,
+  sy: number,
+): RatioDriver {
+  if (!isCorner(handle)) return movesLeft(handle) || movesRight(handle) ? 'width' : 'height'
+  if (preferred) return preferred
+  return Math.abs(sx) >= Math.abs(sy) ? 'width' : 'height'
+}
+
 export type ResizeOptions = {
   keepRatio?: boolean
   fromCenter?: boolean
   minMm?: number
+  /** Dimension the ratio lock is driven by. Corner handles only. */
+  ratioDriver?: RatioDriver
 }
 
 /**
@@ -71,7 +102,7 @@ export function resizeRect(
   dyMm: number,
   options: ResizeOptions = {},
 ): Rect {
-  const { keepRatio = false, fromCenter = false, minMm = MIN_SIZE_MM } = options
+  const { keepRatio = false, fromCenter = false, minMm = MIN_SIZE_MM, ratioDriver } = options
   const x0 = start.x
   const x1 = start.x + start.width
   const y0 = start.y
@@ -106,10 +137,7 @@ export function resizeRect(
   if (keepRatio && start.width > 0 && start.height > 0) {
     const sx = width / start.width
     const sy = height / start.height
-    let s: number
-    if (isCorner(handle)) s = Math.abs(sx) >= Math.abs(sy) ? sx : sy
-    else if (ml || mr) s = sx
-    else s = sy
+    let s = resolveRatioDriver(handle, ratioDriver, sx, sy) === 'width' ? sx : sy
     if (!Number.isFinite(s)) s = 1
     width = start.width * s
     height = start.height * s
