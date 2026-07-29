@@ -72,7 +72,7 @@ src/geometry/
   zorder.ts        lagrekkefølge for blokker, normalisering av z-verdier
   measurements.ts  fire avstander til flatens kanter
   label-layout.ts  plassering av målelapper langs egen linje uten overlapp
-  ruler.ts         pene linjalintervaller (1-2-5-stigen) og delstreker
+  ruler.ts         pene linjalintervaller (1-2-5-stigen), delstreker og nullpunkt
   guides.ts        skillelinjer: begrensning, stegkvantisering, snapping, kant-referanse
   measure-lines.ts målelinjer: vater/lodd/diagonal, vektorkomponenter, treffdeteksjon
 ```
@@ -196,6 +196,23 @@ millimeter – som gir minst 68 px mellom to merkede streker. Det gir runde tall
 cm …) ved alle zoomnivåer, aldri 13,7 cm. Hvert hovedtrinn deles i fem delstreker (fire når trinnet
 starter på 2), slik at også delstrekene lander på runde verdier.
 
+#### Nullpunktet
+
+Nullpunktet flyttes ved å trykke og dra inne i en linjal; et trykk som ikke beveger seg er fortsatt
+et klikk og lager en skillelinje, akkurat som lerretet skiller mellom tapp og dragning. De vannrette
+linjalene deler x-nullpunkt, de loddrette deler y.
+
+Nullpunktet snapper til alt annet gjør det – flatens kanter og midtlinjer, objektenes kanter,
+midtlinjer og ankerpunkter, skillelinjer, endene på målelinjer og rutenettet – men klemmes aldri inn
+til flaten: å måle fra et punkt utenfor veggen (en dørkarm, en gulvlinje) er en helt vanlig ting å
+ville. `Alt` slår av snappingen som ellers.
+
+Strekene legges ut **relativt til nullpunktet**, ikke til flaten. Dermed er null alltid en merket
+strek, og alle etikettene er runde tall uansett hvor skjevt nullpunktet står – står det på 13,7 cm,
+er nabostrekene fortsatt −10, 0 og 10. Merk at nullpunktet bare endrer hva linjalene leser av:
+geometrien og X/Y-feltene i menyen er fortsatt relative til flaten. «Nullstill linjalene» i
+Måling-seksjonen setter begge aksene tilbake.
+
 #### Skillelinjer
 
 En skillelinje er en brukerplassert linje over hele flaten som andre objekter kan snappe til.
@@ -231,8 +248,8 @@ forhåndsvisningen rekker aldri å bli et eget steg.
 #### Målelinjer
 
 Målelinjeverktøyet (`M`) bytter ut klikk-og-dra på lerretet med å tegne en fri målelinje. Begge
-endepunktene snapper til objektenes håndtak, ankerpunkt og kanter, til skillelinjer og til
-rutenettet – `Alt` gir fri måling, `Shift` låser til vannrett eller loddrett.
+endepunktene snapper til objektenes håndtak, ankerpunkt og kanter, til skillelinjer, til endene på
+andre målelinjer og til rutenettet – `Alt` gir fri måling, `Shift` låser til vannrett eller loddrett.
 
 | Linjen er | Vises ved hovering |
 | --- | --- |
@@ -241,13 +258,25 @@ rutenettet – `Alt` gir fri måling, `Shift` låser til vannrett eller loddrett
 | diagonal | linjens egen lengde, pluss x- og y-komponentene som stiplede ben med hvert sitt mål |
 
 Klassifiseringen gjøres i millimeter, ikke i piksler, så den endrer seg aldri med zoomnivået.
-Etikettene forsvinner når pekeren forlater linjen; et klikk fester dem, og et nytt klikk løsner dem
-igjen. Målelinjene tar bare imot pekeren mens verktøyet er aktivt, slik at de aldri stjeler et klikk
-som var ment for et objekt.
 
-Mens verktøyet er aktivt eier det hvert trykk på lerretet – også et som lander på en skillelinje,
-som er nettopp der en måling ofte starter. Skillelinjene lyser fortsatt opp ved hovering, men flyttes
-først når man går tilbake til valgverktøyet.
+**Verktøyet tegner, pekeren redigerer.** Så snart en linje er tegnet, går lerretet tilbake til
+valgverktøyet – det er der den nye linjen kan brukes til noe. Mens måleverktøyet er aktivt eier det
+hvert trykk på lerretet, også et som lander på en skillelinje eller på en eksisterende målelinje:
+det er nettopp der en ny måling ofte starter.
+
+Med vanlig peker gjelder følgende for en målelinje:
+
+| Handling | Resultat |
+| --- | --- |
+| Hovre linjen | Viser lengdemålene (og vektorkomponentene for en diagonal) |
+| Klikk på linjen | Fester målene så de blir stående; klikk igjen for å løsne |
+| Dra i en ende | Flytter den enden, med samme snapping linjen ble tegnet med |
+| `Ctrl`/`Cmd` + klikk | Sletter linjen. Mens tasten holdes, erstattes målene av et kryss midt på linjen |
+
+Når en ende snapper til et objekt, tegnes objektets åtte håndtak og ankerpunktet opp, slik at de
+andre stedene enden kunne ha landet er synlige mens man sikter. Endene er håndtak på linje med
+skaleringshåndtakene og vinner over det som ligger under dem; selve linjen viker derimot for et
+objekt, så den stjeler aldri et klikk som var ment for objektet.
 
 #### Endringssteg
 
@@ -280,7 +309,8 @@ uansett hvilken vei pekeren beveger seg.
 Dokumentformatet er versjonert (`schemaVersion`, nå 2) og valideres med Zod ved innlasting og import.
 `migrateProject()` løfter et dokument helt fram til gjeldende versjon, ikke bare ett steg. Objekter
 skrevet før opasitet fantes forblir helt ugjennomsiktige – nye objekter starter derimot på 80 %.
-Skillelinjer utenfor flaten klemmes inn i stedet for å forkastes, så linjen beholdes.
+Skillelinjer utenfor flaten klemmes inn i stedet for å forkastes, så linjen beholdes; linjalenes
+nullpunkt klemmes derimot aldri.
 Lagringsnøkkel: `hengopp.project.v1`, med `hengopp.project.v1.backup` som siste gyldige
 sikkerhetskopi. Ugyldige eller skadde data krasjer aldri appen – de gir et varsel og et nytt
 prosjekt, eventuelt gjenopprettet fra sikkerhetskopien. `migrateProject()` løfter eldre
@@ -368,4 +398,5 @@ rulling som siste sikring på svært små skjermer, slik at ingen kontroll blir 
 - Ett prosjekt om gangen i `localStorage`.
 - Angre-historikken er begrenset til de ti siste handlingene.
 - Skillelinjer går alltid tvers over hele flaten; de kan ikke være skrå eller korte.
-- Målelinjer kan slettes og festes, men ikke flyttes etter at de er tegnet.
+- En målelinje redigeres ved å flytte endene; hele linjen kan ikke dras i ett.
+- Linjalenes nullpunkt endrer bare avlesningen; X/Y-feltene i menyen er fortsatt relative til flaten.

@@ -1,6 +1,7 @@
 import type { SceneObject } from '@/models/object'
 import type { GridDefinition } from '@/models/grid'
 import type { GuideLine } from '@/models/guide'
+import type { MeasureLine } from '@/models/measure'
 import type { SurfaceDefinition } from '@/models/project'
 import { type Rect, right, bottom, centerX, centerY, anchorPoint } from './bounds'
 import { gridLines } from './grid'
@@ -8,8 +9,8 @@ import { roundMm } from '@/utils/units'
 
 export type Axis = 'x' | 'y'
 
-export type SnapKind = 'edge-start' | 'center' | 'anchor' | 'edge-end' | 'grid' | 'guide'
-export type SnapSource = 'surface' | 'object' | 'grid' | 'guide'
+export type SnapKind = 'edge-start' | 'center' | 'anchor' | 'edge-end' | 'grid' | 'guide' | 'endpoint'
+export type SnapSource = 'surface' | 'object' | 'grid' | 'guide' | 'measure'
 
 export type SnapCandidate = { pos: number; kind: SnapKind }
 
@@ -32,6 +33,8 @@ export type SnapGuide = {
   source: SnapSource
   targetKind: SnapKind
   movingKind: SnapKind
+  /** Which object, guide or measuring line was snapped to. */
+  refId?: string
 }
 
 export type SnapResult = {
@@ -179,6 +182,7 @@ export function computeSnap(input: SnapInput): SnapResult {
       source: x.target.source,
       targetKind: x.target.kind,
       movingKind: x.movingKind,
+      refId: x.target.refId,
     }
     result.xKey = x.key
   }
@@ -192,6 +196,7 @@ export function computeSnap(input: SnapInput): SnapResult {
       source: y.target.source,
       targetKind: y.target.kind,
       movingKind: y.movingKind,
+      refId: y.target.refId,
     }
     result.yKey = y.key
   }
@@ -240,6 +245,10 @@ export type BuildTargetsInput = {
   guides?: GuideLine[]
   /** Guide excluded from the targets, e.g. the one currently being dragged. */
   excludeGuideId?: string
+  /** Measuring lines, whose endpoints are snap targets of their own. */
+  measureLines?: MeasureLine[]
+  /** Measuring line excluded from the targets, e.g. the one being edited. */
+  excludeMeasureId?: string
 }
 
 /** Build every snap target for the current document state. */
@@ -305,6 +314,22 @@ export function buildSnapTargets(input: BuildTargetsInput): SnapTargets {
     else y.push(target)
   }
 
+  // Endpoints of the measuring lines, so a new measurement can start exactly
+  // where an earlier one ended.
+  for (const line of input.measureLines ?? []) {
+    if (line.id === input.excludeMeasureId) continue
+    const ends: [number, number][] = [
+      [line.x1Mm, line.y1Mm],
+      [line.x2Mm, line.y2Mm],
+    ]
+    const extentY: [number, number] = [Math.min(line.y1Mm, line.y2Mm), Math.max(line.y1Mm, line.y2Mm)]
+    const extentX: [number, number] = [Math.min(line.x1Mm, line.x2Mm), Math.max(line.x1Mm, line.x2Mm)]
+    for (const [px, py] of ends) {
+      x.push({ pos: px, kind: 'endpoint', source: 'measure', refId: line.id, extent: extentY })
+      y.push({ pos: py, kind: 'endpoint', source: 'measure', refId: line.id, extent: extentX })
+    }
+  }
+
   return { x, y }
 }
 
@@ -319,10 +344,11 @@ export function buildSnapTargetsForDocument(
     surfaceGrid: GridDefinition
     objects: Record<string, SceneObject>
     guides?: GuideLine[]
+    measureLines?: MeasureLine[]
     settings: { snapToGrid: boolean; snapToObjects: boolean }
   },
   movingObjectIds: string[],
-  options: { excludeGuideId?: string } = {},
+  options: { excludeGuideId?: string; excludeMeasureId?: string } = {},
 ): SnapTargets {
   const excluded = new Set(movingObjectIds)
   return buildSnapTargets({
@@ -333,6 +359,8 @@ export function buildSnapTargetsForDocument(
     snapToObjects: doc.settings.snapToObjects,
     guides: doc.guides,
     excludeGuideId: options.excludeGuideId,
+    measureLines: doc.measureLines,
+    excludeMeasureId: options.excludeMeasureId,
   })
 }
 

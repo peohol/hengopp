@@ -7,6 +7,9 @@ import { formatLength } from '@/utils/units'
 const MEASURE_COLOR = '#0f7b6c'
 export const MEASURE_HIT_PX = 12
 export const MEASURE_HIT_TOUCH_PX = 24
+/** Hit radius of an endpoint handle. Comfortably bigger than the dot it draws. */
+export const MEASURE_END_HIT_PX = 11
+export const MEASURE_END_HIT_TOUCH_PX = 20
 
 type Props = {
   lines: MeasureLine[]
@@ -14,7 +17,10 @@ type Props = {
   unit: Unit
   sx: (mm: number) => number
   sy: (mm: number) => number
-  /** Measuring lines only take pointer input while their tool is active. */
+  /**
+   * Measuring lines take pointer input with the *select* tool, not the measure
+   * tool: the measure tool only draws new lines.
+   */
   interactive: boolean
   coarsePointer: boolean
 }
@@ -26,35 +32,52 @@ type Props = {
  * level line reports its horizontal length, a plumb line its vertical length,
  * and a diagonal reports its own length plus the x and y components of the
  * vector, drawn as dashed legs with their own labels.
+ *
+ * Each end is a handle that can be dragged to a new position, with the same
+ * snapping the line was drawn with. Holding Ctrl/Cmd arms deletion: a cross
+ * appears at the middle of the hovered line, and a click removes it.
  */
 export function MeasureLayer({ lines, draft, unit, sx, sy, interactive, coarsePointer }: Props) {
   const hoverId = useInteractionStore((s) => s.hoverMeasureId)
+  const deleteArmed = useInteractionStore((s) => s.deleteArmed)
+  const editingId = useInteractionStore((s) => s.measureDraft?.editingId ?? null)
   const hit = coarsePointer ? MEASURE_HIT_TOUCH_PX : MEASURE_HIT_PX
+  const endHit = coarsePointer ? MEASURE_END_HIT_TOUCH_PX : MEASURE_END_HIT_PX
 
   return (
     <g data-testid="measure-lines">
-      {lines.map((line) => (
-        <MeasureNode
-          key={line.id}
-          line={line}
-          unit={unit}
-          sx={sx}
-          sy={sy}
-          showLabels={line.pinned || (interactive && hoverId === line.id)}
-          interactive={interactive}
-          showDelete={interactive && (hoverId === line.id || line.pinned)}
-          hitPx={hit}
-        />
-      ))}
+      {lines.map((line) => {
+        // While an end of this line is being dragged, the draft stands in for it.
+        if (editingId === line.id) return null
+        const hovered = interactive && hoverId === line.id
+        const armed = hovered && deleteArmed
+        return (
+          <MeasureNode
+            key={line.id}
+            line={line}
+            unit={unit}
+            sx={sx}
+            sy={sy}
+            // While deletion is armed the cross replaces the labels: the only
+            // thing worth saying at that moment is what the click will do.
+            showLabels={(line.pinned || hovered) && !armed}
+            interactive={interactive}
+            showDelete={armed}
+            hitPx={hit}
+            endHitPx={endHit}
+          />
+        )
+      })}
       {draft ? (
         <MeasureNode
-          line={{ id: 'draft', ...draft, pinned: false }}
+          line={{ id: 'draft', x1Mm: draft.x1Mm, y1Mm: draft.y1Mm, x2Mm: draft.x2Mm, y2Mm: draft.y2Mm, pinned: false }}
           unit={unit}
           sx={sx}
           sy={sy}
           showLabels
           interactive={false}
           hitPx={hit}
+          endHitPx={endHit}
           isDraft
         />
       ) : null}
@@ -71,6 +94,7 @@ type NodeProps = {
   interactive: boolean
   showDelete?: boolean
   hitPx: number
+  endHitPx: number
   isDraft?: boolean
 }
 
@@ -83,6 +107,7 @@ function MeasureNode({
   interactive,
   showDelete,
   hitPx,
+  endHitPx,
   isDraft,
 }: NodeProps) {
   const m = measureMetrics(line)
@@ -102,16 +127,25 @@ function MeasureNode({
       data-testid={isDraft ? 'measure-draft' : `measure-line${line.pinned ? '-pinned' : ''}`}
       className="measure"
       pointerEvents={interactive ? undefined : 'none'}
-      style={interactive ? { cursor: 'pointer' } : undefined}
     >
       {interactive ? (
         <>
           <title>
             {`Målelinje, ${formatLength(lengthMm, unit)}${
               diagonal ? ` (${formatLength(m.widthMm, unit)} × ${formatLength(m.heightMm, unit)})` : ''
-            }. Klikk for å feste målene.`}
+            }. Klikk for å feste målene, dra i endene for å endre den, Ctrl-klikk for å slette.`}
           </title>
-          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={hitPx} />
+          {/* The body of the line: pinning and Ctrl-deletion live here. */}
+          <line
+            x1={x1}
+            y1={y1}
+            x2={x2}
+            y2={y2}
+            stroke="transparent"
+            strokeWidth={hitPx}
+            style={{ cursor: 'pointer' }}
+            data-testid={`measure-hit-${line.id}`}
+          />
         </>
       ) : null}
 
@@ -151,8 +185,24 @@ function MeasureNode({
         strokeDasharray={isDraft ? '6 4' : undefined}
         pointerEvents="none"
       />
-      <EndCap x={x1} y={y1} />
-      <EndCap x={x2} y={y2} />
+
+      {/* The ends are handles: drag one to move it, with snapping. */}
+      <EndHandle
+        x={x1}
+        y={y1}
+        lineId={line.id}
+        end="start"
+        interactive={interactive && !isDraft}
+        hitPx={endHitPx}
+      />
+      <EndHandle
+        x={x2}
+        y={y2}
+        lineId={line.id}
+        end="end"
+        interactive={interactive && !isDraft}
+        hitPx={endHitPx}
+      />
 
       {showLabels ? (
         <g pointerEvents="none">
@@ -182,21 +232,15 @@ function MeasureNode({
         </g>
       ) : null}
 
+      {/* Ctrl held over the line: a click will delete it. */}
       {showDelete && !isDraft ? (
-        <g
-          data-measure-delete={line.id}
-          data-testid="measure-delete"
-          style={{ cursor: 'pointer' }}
-          role="button"
-          aria-label="Slett målelinje"
-        >
-          <circle cx={x1} cy={y1} r={9} fill="#ffffff" stroke={MEASURE_COLOR} strokeWidth={1} />
+        <g pointerEvents="none" data-testid="measure-delete">
+          <circle cx={(x1 + x2) / 2} cy={(y1 + y2) / 2} r={11} fill="#ffffff" stroke="#b3261e" strokeWidth={1.25} />
           <path
-            d={`M${x1 - 3.2} ${y1 - 3.2}l6.4 6.4M${x1 + 3.2} ${y1 - 3.2}l-6.4 6.4`}
-            stroke={MEASURE_COLOR}
-            strokeWidth={1.4}
+            d={`M${(x1 + x2) / 2 - 4} ${(y1 + y2) / 2 - 4}l8 8M${(x1 + x2) / 2 + 4} ${(y1 + y2) / 2 - 4}l-8 8`}
+            stroke="#b3261e"
+            strokeWidth={1.6}
             strokeLinecap="round"
-            pointerEvents="none"
           />
         </g>
       ) : null}
@@ -204,11 +248,47 @@ function MeasureNode({
   )
 }
 
-/** Short cross bar marking an endpoint, so a measurement reads as measured. */
-function EndCap({ x, y }: { x: number; y: number }) {
+/** Endpoint dot, and — with the select tool — the handle that moves it. */
+function EndHandle({
+  x,
+  y,
+  lineId,
+  end,
+  interactive,
+  hitPx,
+}: {
+  x: number
+  y: number
+  lineId: string
+  end: 'start' | 'end'
+  interactive: boolean
+  hitPx: number
+}) {
   return (
-    <g pointerEvents="none">
-      <circle cx={x} cy={y} r={2.5} fill={MEASURE_COLOR} stroke="#ffffff" strokeWidth={1} />
+    <g>
+      {interactive ? (
+        <circle
+          cx={x}
+          cy={y}
+          r={hitPx}
+          fill="transparent"
+          data-measure-end={end}
+          data-measure-end-id={lineId}
+          data-testid={`measure-end-${end}`}
+          style={{ cursor: 'grab' }}
+        >
+          <title>Dra for å flytte enden av målelinjen</title>
+        </circle>
+      ) : null}
+      <circle
+        cx={x}
+        cy={y}
+        r={interactive ? 3.5 : 2.5}
+        fill={interactive ? '#ffffff' : MEASURE_COLOR}
+        stroke={MEASURE_COLOR}
+        strokeWidth={interactive ? 1.5 : 1}
+        pointerEvents="none"
+      />
     </g>
   )
 }

@@ -138,14 +138,27 @@ export function useKeyboardShortcuts(): void {
       if (e.code === 'Space') useInteractionStore.getState().setSpacePanArmed(false)
     }
 
-    const onBlur = () => useInteractionStore.getState().setSpacePanArmed(false)
+    // Ctrl/Cmd held arms deletion of a hovered measuring line, so the canvas
+    // needs to know about the modifier even when no key press is a shortcut.
+    const trackModifier = (e: KeyboardEvent) =>
+      useInteractionStore.getState().setDeleteArmed(e.metaKey || e.ctrlKey)
+
+    const onBlur = () => {
+      const interaction = useInteractionStore.getState()
+      interaction.setSpacePanArmed(false)
+      interaction.setDeleteArmed(false)
+    }
 
     window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', trackModifier)
     window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('keyup', trackModifier)
     window.addEventListener('blur', onBlur)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keydown', trackModifier)
       window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('keyup', trackModifier)
       window.removeEventListener('blur', onBlur)
     }
   }, [])

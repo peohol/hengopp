@@ -28,6 +28,20 @@ export const pinnedMeasurementSchema = z.object({
 })
 export type PinnedMeasurement = z.infer<typeof pinnedMeasurementSchema>
 
+/**
+ * Zero point of the rulers, in model millimetres. It only changes what the
+ * rulers read out — never the geometry, and never the coordinates in the menu,
+ * which stay relative to the surface. Unlike a guide it may sit outside the
+ * surface, since measuring from a point off the wall is a normal thing to want.
+ */
+export const rulerOriginSchema = z.object({
+  xMm: z.number().finite(),
+  yMm: z.number().finite(),
+})
+export type RulerOrigin = z.infer<typeof rulerOriginSchema>
+
+export const DEFAULT_RULER_ORIGIN: RulerOrigin = { xMm: 0, yMm: 0 }
+
 export const settingsSchema = z.object({
   movementStepMm: z.number().finite().positive(),
   snapToGrid: z.boolean(),
@@ -55,6 +69,7 @@ export const projectSchema = z.object({
   guides: z.array(guideLineSchema).default([]),
   /** Free measuring lines drawn with the measure tool. */
   measureLines: z.array(measureLineSchema).default([]),
+  rulerOrigin: rulerOriginSchema.default(DEFAULT_RULER_ORIGIN),
   settings: settingsSchema,
   /** True until the user has completed the first-run surface setup. */
   isDraftSetup: z.boolean().default(false),
@@ -81,6 +96,7 @@ export function createEmptyProject(id: string): HengoppProject {
     pinnedMeasurements: [],
     guides: [],
     measureLines: [],
+    rulerOrigin: { ...DEFAULT_RULER_ORIGIN },
     settings: {
       movementStepMm: 10,
       snapToGrid: true,

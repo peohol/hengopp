@@ -225,6 +225,42 @@ export function toggleMeasurePinned(draft: HengoppProject, id: string): void {
   if (line) line.pinned = !line.pinned
 }
 
+export type MeasureEnd = 'start' | 'end'
+
+/** Move one end of an existing measuring line. */
+export function setMeasureEndpoint(
+  draft: HengoppProject,
+  id: string,
+  end: MeasureEnd,
+  point: { x: number; y: number },
+): void {
+  const line = draft.measureLines.find((l) => l.id === id)
+  if (!line) return
+  if (end === 'start') {
+    line.x1Mm = roundMm(point.x)
+    line.y1Mm = roundMm(point.y)
+  } else {
+    line.x2Mm = roundMm(point.x)
+    line.y2Mm = roundMm(point.y)
+  }
+}
+
+/* ------------------------------------------------------------ Ruler origin */
+
+/**
+ * Move the zero point of the rulers. It is deliberately not clamped to the
+ * surface: measuring from a point off the wall (a doorway, a floor line) is a
+ * normal thing to want.
+ */
+export function setRulerOrigin(draft: HengoppProject, origin: { xMm?: number; yMm?: number }): void {
+  if (origin.xMm !== undefined) draft.rulerOrigin.xMm = roundMm(origin.xMm)
+  if (origin.yMm !== undefined) draft.rulerOrigin.yMm = roundMm(origin.yMm)
+}
+
+export function resetRulerOrigin(draft: HengoppProject): void {
+  draft.rulerOrigin = { xMm: 0, yMm: 0 }
+}
+
 export function removeMeasureLine(draft: HengoppProject, id: string): void {
   draft.measureLines = draft.measureLines.filter((l) => l.id !== id)
 }

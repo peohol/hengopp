@@ -23,6 +23,7 @@ export type DocSnapshot = {
   measureLines: { id: string; x1Mm: number; y1Mm: number; x2Mm: number; y2Mm: number; pinned: boolean }[]
   surface: { widthMm: number; heightMm: number; color: string }
   surfaceGrid: { enabled: boolean; cols: number; rows: number }
+  rulerOrigin: { xMm: number; yMm: number }
   displayUnit: string
 }
 

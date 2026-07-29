@@ -960,6 +960,10 @@ test.describe('Hengopp', () => {
     // Level, so it is measured horizontally only.
     expect(doc.measureLines[0].y2Mm).toBe(bilde.yMm)
 
+    // Drawing hands the canvas straight back to the pointer, which is the mode
+    // the new line can actually be worked with in.
+    await expect(page.getByTestId('measure-tool')).toHaveAttribute('aria-pressed', 'false')
+
     // Labels appear on hover and disappear again.
     const mid = await toScreen(page, (doc.measureLines[0].x1Mm + bilde.xMm) / 2, bilde.yMm)
     await page.mouse.move(mid.x, mid.y - 200, { steps: 6 })
@@ -974,7 +978,37 @@ test.describe('Hengopp', () => {
     await page.mouse.move(mid.x, mid.y - 200)
     await expect(page.getByTestId('measure-label')).toBeVisible()
 
+    // An end is a handle: drag it, and it snaps like the line was drawn.
+    const endBefore = (await getDoc(page)).measureLines[0]
+    await dragModel(
+      page,
+      { x: endBefore.x1Mm, y: endBefore.y1Mm },
+      { x: bilde.xMm - 500, y: bilde.yMm + bilde.heightMm / 2 + 10 },
+    )
+    let edited = (await getDoc(page)).measureLines[0]
+    expect(edited.x2Mm).toBe(endBefore.x2Mm)
+    expect(edited.y2Mm).toBe(endBefore.y2Mm)
+    expect(edited.x1Mm).not.toBe(endBefore.x1Mm)
+    // Snapped onto the object's horizontal centre line, which the free end was
+    // released just short of.
+    expect(edited.y1Mm).toBe(bilde.yMm + bilde.heightMm / 2)
+    expect((await getDoc(page)).measureLines).toHaveLength(1)
+
+    // While an end is being dragged onto an object, that object's handles and
+    // anchor are shown so the other places it could land are visible.
+    const start = await toScreen(page, edited.x1Mm, edited.y1Mm)
+    const onObject = await toScreen(page, bilde.xMm + 4, bilde.yMm + bilde.heightMm + 3)
+    await page.mouse.move(start.x, start.y, { steps: 4 })
+    await page.mouse.down()
+    await page.mouse.move(start.x + 8, start.y + 8, { steps: 3 })
+    await page.mouse.move(onObject.x, onObject.y, { steps: 10 })
+    await expect(page.getByTestId('snap-hint')).toBeVisible()
+    await page.mouse.up()
+    edited = (await getDoc(page)).measureLines[0]
+    expect([edited.x1Mm, edited.y1Mm]).toEqual([bilde.xMm, bilde.yMm + bilde.heightMm])
+
     // A diagonal shows its two vector components as well.
+    await page.keyboard.press('m')
     await dragModel(page, { x: 400, y: 1600 }, { x: 1400, y: 1900 }, { modifiers: ['Alt'] })
     doc = await getDoc(page)
     expect(doc.measureLines).toHaveLength(2)
@@ -990,22 +1024,80 @@ test.describe('Hengopp', () => {
     await expect(page.getByTestId('measure-label-x')).toBeVisible()
     await expect(page.getByTestId('measure-label-y')).toBeVisible()
 
+    // Ctrl arms deletion: a cross replaces the labels, and the click removes it.
+    await page.keyboard.down('Control')
+    await expect(page.getByTestId('measure-delete')).toBeVisible()
+    // The armed line drops its own labels — only the pinned first line keeps
+    // showing one — so the cross is the only thing left to read on it.
+    await expect(page.getByTestId('measure-components')).toBeHidden()
+    await expect(page.getByTestId('measure-label')).toHaveCount(1)
+    await page.mouse.click(dmid.x, dmid.y)
+    await page.keyboard.up('Control')
+    await expect.poll(async () => (await getDoc(page)).measureLines.length).toBe(1)
+
     // A measurement can start right on a guide: the tool owns the press, so the
     // guide never intercepts it and drags itself instead.
     await clickRuler(page, 'left', 1700)
     const guide = (await getDoc(page)).guides[0]
+    await page.keyboard.press('m')
     await dragModel(page, { x: 300, y: guide.posMm + 3 }, { x: 1500, y: guide.posMm + 3 })
     doc = await getDoc(page)
     expect(doc.guides[0].posMm).toBe(guide.posMm)
-    expect(doc.measureLines).toHaveLength(3)
-    expect(doc.measureLines[2].y1Mm).toBe(guide.posMm)
+    expect(doc.measureLines).toHaveLength(2)
+    expect(doc.measureLines[1].y1Mm).toBe(guide.posMm)
 
-    // Escape returns to selecting, and objects respond again.
-    await page.keyboard.press('Escape')
-    await expect(page.getByTestId('measure-tool')).toHaveAttribute('aria-pressed', 'false')
+    // With the pointer back, objects respond again.
     await clickModel(page, { x: bilde.xMm + bilde.widthMm / 2, y: bilde.yMm + bilde.heightMm / 2 })
     expect(await selection(page)).toEqual([bilde.id])
     expect(errors).toEqual([])
+  })
+
+  test('26: the ruler zero point can be dragged, and snaps', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page, 300, 200)
+    await createObject(page, { name: 'Bilde', widthCm: 60, heightCm: 40 })
+    await page.getByTestId('prop-x').fill('80')
+    await page.getByTestId('prop-x').press('Enter')
+    const bilde = await objectByName(page, 'Bilde')
+
+    const ruler = (await page.getByTestId('ruler-top').boundingBox())!
+    const y = ruler.y + ruler.height / 2
+    const from = await toScreen(page, 1000, 0)
+    const near = await toScreen(page, bilde.xMm - 5, 0)
+
+    // Dragging inside the ruler moves the zero point, and snaps it to the
+    // object's left edge. It creates no guide on the way.
+    await page.mouse.move(from.x, y)
+    await page.mouse.down()
+    await page.mouse.move(from.x + 20, y, { steps: 4 })
+    await page.mouse.move(near.x, y, { steps: 8 })
+    await page.mouse.up()
+    let doc = await getDoc(page)
+    expect(doc.rulerOrigin.xMm).toBe(bilde.xMm)
+    expect(doc.guides).toHaveLength(0)
+    // The zero point is a read-out, never geometry.
+    expect((await objectByName(page, 'Bilde')).xMm).toBe(bilde.xMm)
+
+    // A press that never moves is still a click, so guides keep working.
+    await clickRuler(page, 'top', 600)
+    expect((await getDoc(page)).guides).toHaveLength(1)
+
+    // It may leave the surface entirely.
+    const vRuler = (await page.getByTestId('ruler-left').boundingBox())!
+    const vFrom = await toScreen(page, 0, 1000)
+    const vTo = await toScreen(page, 0, -400)
+    await page.mouse.move(vRuler.x + vRuler.width / 2, vFrom.y)
+    await page.mouse.down()
+    await page.mouse.move(vRuler.x + vRuler.width / 2, vFrom.y - 20, { steps: 4 })
+    await page.mouse.move(vRuler.x + vRuler.width / 2, vTo.y, { steps: 10 })
+    await page.mouse.up()
+    doc = await getDoc(page)
+    expect(doc.rulerOrigin.yMm).toBeLessThan(0)
+
+    // And the menu puts both axes back.
+    await page.getByTestId('reset-ruler-origin').click()
+    expect((await getDoc(page)).rulerOrigin).toEqual({ xMm: 0, yMm: 0 })
+    await expect(page.getByTestId('reset-ruler-origin')).toBeDisabled()
   })
 
   test('12: the project survives a reload', async ({ page }) => {

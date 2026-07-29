@@ -783,6 +783,27 @@ button {
   stroke-width: 2;
 }
 
+/* The zero point. A flag rather than a tick, since the tick beside it also
+   reads "0" — and it is what a drag inside the ruler moves. */
+.ruler__origin path {
+  fill: #b3261e;
+}
+
+.ruler__origin line {
+  stroke: #b3261e;
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.ruler__origin.is-dragging path,
+.ruler__origin.is-dragging line {
+  opacity: 1;
+}
+
+.ruler:hover {
+  background: var(--panel-raised);
+}
+
 .canvas {
   display: block;
   width: 100%;

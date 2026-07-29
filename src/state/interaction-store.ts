@@ -14,8 +14,18 @@ export type ToolId = 'select' | 'measure'
 /** Guide line previewed under the pointer while a ruler is hovered. */
 export type GuidePreview = { axis: GuideAxis; posMm: number }
 
-/** Endpoints of the measuring line currently being drawn. */
-export type MeasureDraft = { x1Mm: number; y1Mm: number; x2Mm: number; y2Mm: number }
+/**
+ * Endpoints of the measuring line currently being drawn — or, when `editingId`
+ * is set, the live shape of an existing line whose end is being dragged. The
+ * real line is hidden while its draft stands in for it.
+ */
+export type MeasureDraft = {
+  x1Mm: number
+  y1Mm: number
+  x2Mm: number
+  y2Mm: number
+  editingId?: string
+}
 
 export type InteractionStore = {
   /** Entity ids (objects or groups) selected at the active group level. */
@@ -48,6 +58,15 @@ export type InteractionStore = {
 
   hoverMeasureId: string | null
   measureDraft: MeasureDraft | null
+  /** Live position of the ruler zero point being dragged. */
+  originDrag: { axis: GuideAxis; posMm: number } | null
+  /**
+   * Objects an active snap is currently locked onto. Their handles and anchor
+   * are drawn so the user can see what else the point could snap to.
+   */
+  snapObjectIds: string[]
+  /** True while Ctrl/Cmd is held: arms deletion of a hovered measuring line. */
+  deleteArmed: boolean
 
   setSelection: (ids: string[], keyId?: string | null) => void
   toggleSelection: (id: string) => void
@@ -72,6 +91,9 @@ export type InteractionStore = {
   setGuideDrag: (drag: { id: string; posMm: number } | null) => void
   setHoverMeasure: (id: string | null) => void
   setMeasureDraft: (draft: MeasureDraft | null) => void
+  setOriginDrag: (drag: { axis: GuideAxis; posMm: number } | null) => void
+  setSnapObjectIds: (ids: string[]) => void
+  setDeleteArmed: (on: boolean) => void
 
   endInteraction: () => void
 }
@@ -99,6 +121,9 @@ export const useInteractionStore = create<InteractionStore>((set, get) => ({
 
   hoverMeasureId: null,
   measureDraft: null,
+  originDrag: null,
+  snapObjectIds: [],
+  deleteArmed: false,
 
   setSelection: (ids, keyId) =>
     set({ selection: ids, keyId: keyId !== undefined ? keyId : (ids[ids.length - 1] ?? null) }),
@@ -160,6 +185,15 @@ export const useInteractionStore = create<InteractionStore>((set, get) => ({
     if (get().hoverMeasureId !== id) set({ hoverMeasureId: id })
   },
   setMeasureDraft: (draft) => set({ measureDraft: draft }),
+  setOriginDrag: (drag) => set({ originDrag: drag }),
+  setSnapObjectIds: (ids) => {
+    const current = get().snapObjectIds
+    if (current.length === ids.length && current.every((id, i) => id === ids[i])) return
+    set({ snapObjectIds: ids })
+  },
+  setDeleteArmed: (on) => {
+    if (get().deleteArmed !== on) set({ deleteArmed: on })
+  },
 
   endInteraction: () =>
     set({
@@ -170,6 +204,8 @@ export const useInteractionStore = create<InteractionStore>((set, get) => ({
       marqueeHits: [],
       guideDrag: null,
       measureDraft: null,
+      originDrag: null,
+      snapObjectIds: [],
     }),
 }))
 

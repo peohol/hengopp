@@ -305,6 +305,14 @@ const ICONS = {
       <path d="M12 3.5v17" strokeDasharray="1 3" strokeLinecap="round" opacity=".55" />
     </>
   ),
+  rulerOrigin: (
+    <>
+      <rect x="2.8" y="3" width="18.4" height="6" rx="1" fill={ICON_FILLS.grey} />
+      <path d="M7 9V6.2M12 9V5M17 9V6.2" opacity=".7" />
+      <path d="M12 11.5V21M6.5 16.5h11" strokeDasharray="2.5 2.5" opacity=".6" />
+      <circle cx="12" cy="11.5" r="2.4" fill={ICON_FILLS.coral} />
+    </>
+  ),
   close: <path d="M6 6l12 12M18 6 6 18" />,
   check: <path d="m5 12.5 4.6 4.5L19 7" />,
   chevronDown: <path d="m6.5 9.5 5.5 5.5 5.5-5.5" fill="none" />,

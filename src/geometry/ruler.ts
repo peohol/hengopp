@@ -80,13 +80,22 @@ export type RulerInput = {
   /** Pixels per millimetre. */
   scale: number
   unit: Unit
+  /** Model position the ruler reads as zero. Defaults to the surface origin. */
+  originMm?: number
 }
 
-/** Every tick to draw for one ruler, ordered from `fromMm` to `toMm`. */
-export function rulerScale({ fromMm, toMm, scale, unit }: RulerInput): RulerScale {
+/**
+ * Every tick to draw for one ruler, ordered from `fromMm` to `toMm`.
+ *
+ * Ticks are laid out relative to the origin, not to the surface, so the zero
+ * mark is always a labelled tick and every label stays a round number wherever
+ * the user drags the origin to.
+ */
+export function rulerScale({ fromMm, toMm, scale, unit, originMm = 0 }: RulerInput): RulerScale {
   const empty: RulerScale = { stepMm: 0, minorStepMm: null, ticks: [] }
   if (!Number.isFinite(fromMm) || !Number.isFinite(toMm) || toMm <= fromMm) return empty
   if (!Number.isFinite(scale) || scale <= 0) return empty
+  const origin = Number.isFinite(originMm) ? originMm : 0
 
   const stepMm = niceStepMm(MIN_MAJOR_PX, scale, unit)
   if (stepMm <= 0) return empty
@@ -101,13 +110,14 @@ export function rulerScale({ fromMm, toMm, scale, unit }: RulerInput): RulerScal
   if (count > 4000) return empty
 
   const ticks: RulerTick[] = []
-  const first = Math.ceil(fromMm / tickStep - 1e-9)
+  const first = Math.ceil((fromMm - origin) / tickStep - 1e-9)
   for (let i = 0; i < count; i += 1) {
-    const posMm = roundMm((first + i) * tickStep)
+    const offsetMm = (first + i) * tickStep
+    const posMm = roundMm(origin + offsetMm)
     if (posMm > toMm + 1e-9) break
-    const ratio = posMm / stepMm
+    const ratio = offsetMm / stepMm
     const major = Math.abs(ratio - Math.round(ratio)) < 1e-6
-    ticks.push(major ? { posMm, major, label: formatNumber(posMm, unit) } : { posMm, major })
+    ticks.push(major ? { posMm, major, label: formatNumber(roundMm(offsetMm), unit) } : { posMm, major })
   }
   return { stepMm, minorStepMm, ticks }
 }

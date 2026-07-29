@@ -1,5 +1,11 @@
 import { z } from 'zod'
-import { projectSchema, SCHEMA_VERSION, createEmptyProject, type HengoppProject } from '@/models/project'
+import {
+  projectSchema,
+  DEFAULT_RULER_ORIGIN,
+  SCHEMA_VERSION,
+  createEmptyProject,
+  type HengoppProject,
+} from '@/models/project'
 import { newProjectId } from '@/utils/ids'
 
 export const STORAGE_KEY = 'hengopp.project.v1'
@@ -62,11 +68,12 @@ export function migrateProject(raw: unknown): unknown {
   }
 
   if (version < 2) {
-    // v1 → v2: guides, measuring lines, per-object opacity and locking.
-    // Objects written before opacity existed were drawn fully opaque, so they
-    // keep that look instead of inheriting the new-object default.
+    // v1 → v2: guides, measuring lines, the ruler origin, per-object opacity
+    // and locking. Objects written before opacity existed were drawn fully
+    // opaque, so they keep that look instead of the new-object default.
     doc.guides = Array.isArray(doc.guides) ? doc.guides : []
     doc.measureLines = Array.isArray(doc.measureLines) ? doc.measureLines : []
+    doc.rulerOrigin = doc.rulerOrigin ?? { ...DEFAULT_RULER_ORIGIN }
     if (doc.objects && typeof doc.objects === 'object') {
       const objects: Record<string, unknown> = {}
       for (const [id, value] of Object.entries(doc.objects as Record<string, unknown>)) {

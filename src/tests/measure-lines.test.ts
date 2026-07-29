@@ -10,7 +10,12 @@ import {
 } from '@/geometry/measure-lines'
 import { snapPoint, buildSnapTargets } from '@/geometry/snapping'
 import { DEFAULT_SURFACE_GRID } from '@/models/grid'
-import { addMeasureLine, removeMeasureLine, toggleMeasurePinned } from '@/state/doc-actions'
+import {
+  addMeasureLine,
+  removeMeasureLine,
+  setMeasureEndpoint,
+  toggleMeasurePinned,
+} from '@/state/doc-actions'
 import { makeObject, makeProject } from './helpers'
 
 const line = (x1: number, y1: number, x2: number, y2: number): MeasureLine => ({
@@ -124,7 +129,52 @@ describe('snapping a measuring endpoint', () => {
   })
 })
 
+describe('snapping to other measuring lines', () => {
+  it('offers the endpoints of existing lines as targets', () => {
+    const targets = buildSnapTargets({
+      surface: { widthMm: 1000, heightMm: 800, color: '#fff' },
+      surfaceGrid: { ...DEFAULT_SURFACE_GRID, enabled: false },
+      objects: [],
+      snapToGrid: false,
+      snapToObjects: false,
+      measureLines: [{ id: 'm1', x1Mm: 120, y1Mm: 340, x2Mm: 600, y2Mm: 340, pinned: false }],
+    })
+    const snapped = snapPoint({ point: { x: 124, y: 337 }, targets, activateMm: 8, releaseMm: 12, tieMm: 1.5 })
+    expect([snapped.x, snapped.y]).toEqual([120, 340])
+    expect(snapped.xGuide?.source).toBe('measure')
+  })
+
+  it('excludes the line being edited, so an end never snaps to itself', () => {
+    const targets = buildSnapTargets({
+      surface: { widthMm: 1000, heightMm: 800, color: '#fff' },
+      surfaceGrid: { ...DEFAULT_SURFACE_GRID, enabled: false },
+      objects: [],
+      snapToGrid: false,
+      snapToObjects: false,
+      measureLines: [{ id: 'm1', x1Mm: 120, y1Mm: 340, x2Mm: 600, y2Mm: 340, pinned: false }],
+      excludeMeasureId: 'm1',
+    })
+    expect(targets.x).toHaveLength(0)
+    expect(targets.y).toHaveLength(0)
+  })
+})
+
 describe('measuring line document actions', () => {
+  it('moves one end without touching the other', () => {
+    const project = makeProject()
+    let id = ''
+    const added = produce(project, (draft) => {
+      id = addMeasureLine(draft, { x1Mm: 0, y1Mm: 0, x2Mm: 100, y2Mm: 0, pinned: false })
+    })
+    const movedEnd = produce(added, (draft) => setMeasureEndpoint(draft, id, 'end', { x: 250, y: 80 }))
+    expect(movedEnd.measureLines[0]).toMatchObject({ x1Mm: 0, y1Mm: 0, x2Mm: 250, y2Mm: 80 })
+
+    const movedStart = produce(movedEnd, (draft) =>
+      setMeasureEndpoint(draft, id, 'start', { x: -40, y: 15 }),
+    )
+    expect(movedStart.measureLines[0]).toMatchObject({ x1Mm: -40, y1Mm: 15, x2Mm: 250, y2Mm: 80 })
+  })
+
   it('adds, pins and removes', () => {
     const project = makeProject()
     let id = ''

@@ -21,6 +21,7 @@ import {
   removeGuide,
   removeMeasureLine,
   reorderEntities,
+  resetRulerOrigin,
   scaleEntities,
   setEntitiesLocked,
   ungroup,
@@ -289,6 +290,13 @@ export function clearGuides(): void {
 export function deleteMeasureLine(id: string): void {
   project().commit((draft) => removeMeasureLine(draft, id))
   interaction().setHoverMeasure(null)
+}
+
+/** Put the ruler zero point back on the surface origin. */
+export function resetRulers(): void {
+  const { xMm, yMm } = project().doc.rulerOrigin
+  if (xMm === 0 && yMm === 0) return
+  project().commit((draft) => resetRulerOrigin(draft))
 }
 
 export function undo(): void {

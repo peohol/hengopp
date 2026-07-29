@@ -34,11 +34,14 @@ const ROWS: [string, string][] = [
   ['Dobbeltklikk objekt', 'Åpne redigeringsdialogen'],
   ['Dobbeltklikk gruppe', 'Gå inn i gruppen'],
   ['Klikk i en linjal', 'Lag en skillelinje der du klikker'],
+  ['Dra i en linjal', 'Flytt nullpunktet du måler fra'],
   ['Klikk på skillelinje', 'Lås eller lås opp posisjonen'],
   ['Dobbeltklikk skillelinje', 'Oppgi nøyaktig posisjon fra valgfri kant'],
   ['Alt under måling', 'Fri måling uten snapping'],
   ['Shift under måling', 'Lås målelinjen til vannrett eller loddrett'],
   ['Klikk på målelinje', 'Fest lengdemålene så de blir stående'],
+  ['Dra i enden av en målelinje', 'Flytt enden, med snapping'],
+  [`${MOD_LABEL} + klikk på målelinje`, 'Slett målelinjen'],
 ]
 
 export function HelpDialog() {
@@ -78,6 +81,10 @@ export function HelpDialog() {
           På touch: bruk flervalgsmodus i toppmenyen for å velge flere objekter, pinch for å zoome, to fingre
           for å panorere og dobbelttapp for å redigere. Skillelinjer lages ved å tappe en linjal, og hver linje
           har et håndtak du kan dra i – det trengs ingen hovering.
+        </p>
+        <p className="hint">
+          Målelinjeverktøyet tegner bare nye linjer. Så snart en linje er tegnet, går lerretet tilbake til
+          vanlig peker – det er der linjen kan festes, endres i endene eller slettes.
         </p>
         <p className="hint">
           Et låst objekt kan ikke flyttes, skaleres eller få endret avstandsvisning på lerretet, og blir aldri

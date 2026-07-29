@@ -45,6 +45,7 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport, coarsePo
   const mode = useInteractionStore((s) => s.mode)
   const tool = useInteractionStore((s) => s.tool)
   const measureDraft = useInteractionStore((s) => s.measureDraft)
+  const snapObjectIds = useInteractionStore((s) => s.snapObjectIds)
 
   const sx = (mm: number) => mm * viewport.scale + viewport.offsetX
   const sy = (mm: number) => mm * viewport.scale + viewport.offsetY
@@ -266,9 +267,46 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport, coarsePo
         unit={doc.displayUnit}
         sx={sx}
         sy={sy}
-        interactive={tool === 'measure'}
+        interactive={tool === 'select'}
         coarsePointer={coarsePointer}
       />
+
+      {/* Objects an active snap is locked onto: their handles and anchor are
+          shown so the other places the point could land are visible too. */}
+      {snapObjectIds.map((id) => {
+        const obj = doc.objects[id]
+        if (!obj) return null
+        const rect = previewedRect(obj, preview[id])
+        const a = anchorPoint({ ...obj, xMm: rect.x, yMm: rect.y, widthMm: rect.width, heightMm: rect.height })
+        return (
+          <g key={`snaphint-${id}`} pointerEvents="none" data-testid="snap-hint">
+            {HANDLES.map((handle) => {
+              const p = handlePoint(rect, handle)
+              return (
+                <rect
+                  key={handle}
+                  x={sx(p.x) - 3}
+                  y={sy(p.y) - 3}
+                  width={6}
+                  height={6}
+                  fill="#ffffff"
+                  stroke={ACCENT}
+                  strokeWidth={1}
+                />
+              )
+            })}
+            <circle
+              cx={sx(a.x)}
+              cy={sy(a.y)}
+              r={5}
+              fill="#f4dc9a"
+              fillOpacity={0.9}
+              stroke="#14161a"
+              strokeWidth={1}
+            />
+          </g>
+        )
+      })}
 
       {/* Lock badges on the hovered entity's locked objects. */}
       {lockedHovered.map(({ id, rect }) => {

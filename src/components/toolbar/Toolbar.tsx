@@ -19,6 +19,7 @@ import {
   groupSelection,
   redo,
   reorderSelection,
+  resetRulers,
   selectionIsLocked,
   toggleMeasureTool,
   toggleSelectionLock,
@@ -164,6 +165,14 @@ export function Toolbar() {
             disabled={doc.guides.length === 0}
             data-testid="clear-guides"
             onClick={clearGuides}
+          />
+          <IconButton
+            icon="rulerOrigin"
+            label="Nullstill linjalene"
+            hint="Dra inne i en linjal for å flytte nullpunktet dit du måler fra"
+            disabled={doc.rulerOrigin.xMm === 0 && doc.rulerOrigin.yMm === 0}
+            data-testid="reset-ruler-origin"
+            onClick={resetRulers}
           />
         </ToolGroup>
 

@@ -85,3 +85,46 @@ describe('ruler ticks', () => {
     expect(rulerScale({ fromMm: 0, toMm: 100, scale: 0, unit: 'cm' }).ticks).toEqual([])
   })
 })
+
+describe('a moved zero point', () => {
+  it('lays the ticks out from the origin, so zero is always labelled', () => {
+    const { ticks } = rulerScale({ fromMm: 0, toMm: 900, scale: 1, unit: 'cm', originMm: 250 })
+    const majors = ticks.filter((t) => t.major)
+    // The whole visible range is covered, before the origin as well as after …
+    expect(majors.map((t) => t.posMm)).toEqual([50, 150, 250, 350, 450, 550, 650, 750, 850])
+    // … and every label counts from the origin, which lands exactly on zero.
+    expect(majors.map((t) => t.label)).toEqual([
+      '-20',
+      '-10',
+      '0',
+      '10',
+      '20',
+      '30',
+      '40',
+      '50',
+      '60',
+    ])
+  })
+
+  it('labels positions before the origin as negative', () => {
+    const { ticks } = rulerScale({ fromMm: 0, toMm: 600, scale: 1, unit: 'cm', originMm: 400 })
+    expect(ticks.find((t) => t.posMm === 300)?.label).toBe('-10')
+    expect(ticks.find((t) => t.posMm === 400)?.label).toBe('0')
+  })
+
+  it('keeps the labels round for an origin that is not a round number itself', () => {
+    // The origin need not sit on a step — it is wherever the user dropped it.
+    // Its own tick is still exactly zero, and every other label is a round
+    // multiple of the step away from it.
+    const { ticks } = rulerScale({ fromMm: 0, toMm: 900, scale: 1, unit: 'cm', originMm: 137 })
+    const majors = ticks.filter((t) => t.major)
+    expect(majors.map((t) => t.label)).toEqual(['-10', '0', '10', '20', '30', '40', '50', '60', '70'])
+    expect(majors.find((t) => t.label === '0')?.posMm).toBe(137)
+  })
+
+  it('is the same ruler as before when the origin is zero', () => {
+    const plain = rulerScale({ fromMm: 0, toMm: 500, scale: 1, unit: 'cm' })
+    const explicit = rulerScale({ fromMm: 0, toMm: 500, scale: 1, unit: 'cm', originMm: 0 })
+    expect(explicit).toEqual(plain)
+  })
+})
