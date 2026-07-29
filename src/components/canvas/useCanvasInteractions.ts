@@ -48,6 +48,8 @@ import { roundMm, roundToStep } from '@/utils/units'
 export const DRAG_THRESHOLD_PX = 4
 const DOUBLE_TAP_MS = 500
 const DOUBLE_TAP_PX = 24
+/** Largest pinch delta taken at face value; ~1.22 × zoom for a single event. */
+const PINCH_DELTA_CAP = 20
 
 type SessionKind = 'move' | 'resize' | 'marquee' | 'pan'
 
@@ -717,11 +719,16 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
   const onWheel = useCallback(
     (e: React.WheelEvent<SVGSVGElement>) => {
       e.preventDefault()
-      // A trackpad pinch arrives as Ctrl/Cmd + wheel with much smaller deltas.
-      // The browser's own zoom is switched off app-wide, so it drives the
-      // canvas zoom instead.
-      const perUnit = e.deltaMode === 1 ? 0.05 : e.ctrlKey || e.metaKey ? 0.01 : 0.0016
-      const factor = Math.exp(-e.deltaY * perUnit)
+      // A trackpad pinch arrives as Ctrl/Cmd + wheel with much smaller deltas
+      // than a wheel notch, so it needs a bigger step per unit. The browser's
+      // own zoom is switched off app-wide, so this drives the canvas zoom.
+      const pinch = (e.ctrlKey || e.metaKey) && e.deltaMode === 0
+      // A real wheel notch held with Ctrl reports ~100–120 px, which the pinch
+      // step would turn into a 3× jump. Capping the delta at what a pinch
+      // itself produces keeps one notch at roughly one zoom step.
+      const delta = pinch ? Math.max(-PINCH_DELTA_CAP, Math.min(PINCH_DELTA_CAP, e.deltaY)) : e.deltaY
+      const perUnit = pinch ? 0.01 : e.deltaMode === 1 ? 0.05 : 0.0016
+      const factor = Math.exp(-delta * perUnit)
       useViewportStore.getState().zoomAt(toLocal(e.clientX, e.clientY), factor)
     },
     [toLocal],

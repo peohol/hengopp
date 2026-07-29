@@ -482,6 +482,9 @@ test.describe('Hengopp', () => {
 
     const scaleAfter = await page.evaluate(() => window.__hengopp!.viewport.getState().viewport.scale)
     expect(scaleAfter).toBeGreaterThan(scaleBefore)
+    // A wheel notch held with Ctrl reports the same delta as a hard pinch; one
+    // notch must stay one step rather than jumping several zoom levels.
+    expect(scaleAfter / scaleBefore).toBeLessThan(1.3)
 
     // Ctrl + wheel over the toolbar is swallowed, so the page never scales.
     const prevented = await page.evaluate(() => {
