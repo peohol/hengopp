@@ -2,7 +2,7 @@ import type { HengoppProject, MeasurementSide } from '@/models/project'
 import type { SceneObject } from '@/models/object'
 import type { ObjectGroup } from '@/models/group'
 import type { GuideAxis, GuideLine } from '@/models/guide'
-import type { MeasureLine } from '@/models/measure'
+import type { MeasureAttachment, MeasureLine } from '@/models/measure'
 import type { Rect } from '@/geometry/bounds'
 import { clampGuidePos, surfaceExtentFor } from '@/geometry/guides'
 import {
@@ -233,15 +233,18 @@ export function setMeasureEndpoint(
   id: string,
   end: MeasureEnd,
   point: { x: number; y: number },
+  attachment?: MeasureAttachment,
 ): void {
   const line = draft.measureLines.find((l) => l.id === id)
   if (!line) return
   if (end === 'start') {
     line.x1Mm = roundMm(point.x)
     line.y1Mm = roundMm(point.y)
+    line.startAttachment = attachment
   } else {
     line.x2Mm = roundMm(point.x)
     line.y2Mm = roundMm(point.y)
+    line.endAttachment = attachment
   }
 }
 

@@ -9,6 +9,7 @@ import {
   measureMetrics,
 } from '@/geometry/measure-lines'
 import { snapPoint, buildSnapTargets } from '@/geometry/snapping'
+import { attachmentFromSnap, syncMeasureAttachments } from '@/geometry/measure-attachments'
 import { DEFAULT_SURFACE_GRID } from '@/models/grid'
 import {
   addMeasureLine,
@@ -190,5 +191,64 @@ describe('measuring line document actions', () => {
 
     const removed = produce(added, (draft) => removeMeasureLine(draft, id))
     expect(removed.measureLines).toHaveLength(0)
+  })
+})
+
+describe('measuring endpoint attachments', () => {
+  it('stores the snapped point as a fraction of the target object', () => {
+    const project = makeProject([
+      makeObject({ id: 'a', xMm: 200, yMm: 300, widthMm: 100, heightMm: 200 }),
+    ])
+    const attachment = attachmentFromSnap(
+      { x: 200, y: 328 },
+      {
+        x: {
+          axis: 'x', pos: 200, from: 300, to: 500, source: 'object', targetKind: 'edge-start',
+          movingKind: 'edge-start', refId: 'a',
+        },
+      },
+      project,
+    )
+    expect(attachment).toEqual({ objectId: 'a', xRatio: 0, yRatio: 0.14 })
+  })
+
+  it('moves only attached ends and preserves their relative position after resize', () => {
+    const project = makeProject([
+      makeObject({ id: 'a', xMm: 100, yMm: 200, widthMm: 100, heightMm: 200 }),
+      makeObject({ id: 'b', xMm: 600, yMm: 100, widthMm: 200, heightMm: 100 }),
+    ], [], {
+      measureLines: [
+        {
+          ...line(100, 228, 900, 700),
+          startAttachment: { objectId: 'a', xRatio: 0, yRatio: 0.14 },
+        },
+        {
+          ...line(200, 300, 700, 150), id: 'both',
+          startAttachment: { objectId: 'a', xRatio: 1, yRatio: 0.5 },
+          endAttachment: { objectId: 'b', xRatio: 0.5, yRatio: 0.5 },
+        },
+      ],
+    })
+
+    const changed = produce(project, (draft) => {
+      Object.assign(draft.objects.a, { xMm: 300, yMm: 400, heightMm: 400 })
+      Object.assign(draft.objects.b, { xMm: 800, yMm: 500, widthMm: 400 })
+      syncMeasureAttachments(draft)
+    })
+
+    expect(changed.measureLines[0]).toMatchObject({ x1Mm: 300, y1Mm: 456, x2Mm: 900, y2Mm: 700 })
+    expect(changed.measureLines[1]).toMatchObject({ x1Mm: 400, y1Mm: 600, x2Mm: 1000, y2Mm: 550 })
+  })
+
+  it('leaves an endpoint in place when its attached object is deleted', () => {
+    const project = makeProject([makeObject({ id: 'a', xMm: 100, yMm: 100 })], [], {
+      measureLines: [{ ...line(100, 150, 300, 300), startAttachment: { objectId: 'a', xRatio: 0, yRatio: 0.5 } }],
+    })
+    const changed = produce(project, (draft) => {
+      delete draft.objects.a
+      syncMeasureAttachments(draft)
+    })
+    expect(changed.measureLines[0]).toMatchObject({ x1Mm: 100, y1Mm: 150 })
+    expect(changed.measureLines[0].startAttachment).toBeUndefined()
   })
 })

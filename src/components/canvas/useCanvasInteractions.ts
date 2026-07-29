@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type { GuideAxis } from '@/models/guide'
 import type { HengoppProject, MeasurementSide } from '@/models/project'
+import type { MeasureAttachment } from '@/models/measure'
 import { screenToModel, type Point } from '@/geometry/coordinates'
 import {
   anchorPoint,
@@ -20,6 +21,7 @@ import {
 } from '@/geometry/groups'
 import { resolveGuideDrag, surfaceExtentFor } from '@/geometry/guides'
 import { isDrawnMeasure } from '@/geometry/measure-lines'
+import { attachmentFromSnap } from '@/geometry/measure-attachments'
 import {
   buildSnapTargetsForDocument,
   computeSnap,
@@ -106,6 +108,8 @@ type Session = {
   measureId?: string
   /** Which end of an existing line is being dragged. */
   measureEndKind?: MeasureEnd
+  measureStartAttachment?: MeasureAttachment
+  measureEndAttachment?: MeasureAttachment
   /** Objects the current snap is locked onto, for the handle hint. */
   snapObjectIds?: string[]
 }
@@ -355,6 +359,7 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       const model = toModel(e.clientX, e.clientY)
       // A line never snaps to itself while one of its own ends is being moved.
       const targets = buildSnapTargetsForDocument(doc, [], { excludeMeasureId: editing?.lineId })
+      let startAttachment: MeasureAttachment | undefined
       const start = snappingEnabled(doc.settings, e.altKey)
         ? (() => {
             const snapped = snapPoint({
@@ -364,7 +369,9 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
               releaseMm: SNAP_RELEASE_PX / viewport.scale,
               tieMm: SNAP_TIE_PX / viewport.scale,
             })
-            return { x: snapped.x, y: snapped.y }
+            const point = { x: snapped.x, y: snapped.y }
+            startAttachment = attachmentFromSnap(point, { x: snapped.xGuide, y: snapped.yGuide }, doc)
+            return point
           })()
         : model
 
@@ -387,6 +394,7 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       } else {
         session.measureStart = start
         session.measureEnd = start
+        session.measureStartAttachment = startAttachment
       }
 
       sessionRef.current = session
@@ -462,9 +470,11 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
         session.prevYKey = snapped.yKey
         point = { x: snapped.x, y: snapped.y }
         guides = { x: snapped.xGuide, y: snapped.yGuide }
+        session.measureEndAttachment = attachmentFromSnap(point, guides, doc)
       } else {
         session.prevXKey = undefined
         session.prevYKey = undefined
+        session.measureEndAttachment = undefined
       }
       session.measureEnd = point
       // Showing the handles and anchor of whichever object the point is locked
@@ -742,14 +752,24 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
         const { measureId, measureEndKind } = session
         useProjectStore
           .getState()
-          .commit((draft) => setMeasureEndpoint(draft, measureId, measureEndKind, end))
+          .commit((draft) =>
+            setMeasureEndpoint(draft, measureId, measureEndKind, end, session.measureEndAttachment),
+          )
         interaction.endInteraction()
         return
       }
 
       const start = session.measureStart
       if (start && end) {
-        const line = { x1Mm: start.x, y1Mm: start.y, x2Mm: end.x, y2Mm: end.y, pinned: false }
+        const line = {
+          x1Mm: start.x,
+          y1Mm: start.y,
+          x2Mm: end.x,
+          y2Mm: end.y,
+          pinned: false,
+          startAttachment: session.measureStartAttachment,
+          endAttachment: session.measureEndAttachment,
+        }
         // A flick that never became a real line leaves nothing behind.
         if (isDrawnMeasure({ id: 'draft', ...line }, MIN_MEASURE_PX / viewport.scale)) {
           useProjectStore.getState().commit((draft) => void addMeasureLine(draft, line))
