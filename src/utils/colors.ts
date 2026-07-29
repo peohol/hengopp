@@ -27,6 +27,32 @@ export function toHex({ r, g, b }: Rgb): string {
   return `#${c(r)}${c(g)}${c(b)}`
 }
 
+/**
+ * HSL → hex, with hue in degrees and saturation/lightness in 0..1. Used to lay
+ * out the object palette as an even hue × brightness grid.
+ */
+export function hslToHex(hueDeg: number, saturation: number, lightness: number): string {
+  const h = ((hueDeg % 360) + 360) % 360
+  const s = clamp01(saturation)
+  const l = clamp01(lightness)
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  const [r, g, b] =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x]
+  return toHex({ r: r + m, g: g + m, b: b + m })
+}
+
 function srgbToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
 }

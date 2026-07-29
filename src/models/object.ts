@@ -30,8 +30,6 @@ export const sceneObjectSchema = z.object({
 
 export type SceneObject = z.infer<typeof sceneObjectSchema>
 
-export const DEFAULT_OBJECT_FILL = '#c9d7e6'
-
 export const DEFAULT_ANCHOR: Anchor = { u: 0.5, v: 0.5 }
 
 export const defaultInternalGrid = (): typeof DEFAULT_OBJECT_GRID => ({ ...DEFAULT_OBJECT_GRID })
