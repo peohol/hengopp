@@ -39,6 +39,7 @@ import {
   movesLeft,
   movesRight,
   movesTop,
+  ratioDriverForDrag,
   resizeRect,
   type HandleId,
 } from '@/geometry/resizing'
@@ -507,8 +508,19 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
       const fromCenter = session.altKey
       let dx = model.x - session.startModel.x
       let dy = model.y - session.startModel.y
+      // With the ratio locked, the dimension the pointer has travelled furthest
+      // along is the one that changes in whole steps; the other is derived from
+      // it, so it can land anywhere the ratio demands.
+      const ratioDriver = ratioDriverForDrag(dx, dy)
+      if (doc.settings.quantiseDrag) {
+        // The step governs the change in *size*. Scaling from the centre moves
+        // both edges at once, so half a step per edge keeps the size on the step.
+        const edges = fromCenter ? 2 : 1
+        dx = roundToStep(dx * edges, doc.settings.movementStepMm) / edges
+        dy = roundToStep(dy * edges, doc.settings.movementStepMm) / edges
+      }
 
-      let bounds = resizeRect(session.startBounds, handle, dx, dy, { keepRatio, fromCenter })
+      let bounds = resizeRect(session.startBounds, handle, dx, dy, { keepRatio, fromCenter, ratioDriver })
       let guides: { x?: ReturnType<typeof computeSnap>['xGuide']; y?: ReturnType<typeof computeSnap>['yGuide'] } = {}
 
       // Alt scales from the centre and, per spec, also suspends snapping.
@@ -534,9 +546,10 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
           guideMarginMm: guideMargin,
         })
         if (snap.deltaXMm !== 0 || snap.deltaYMm !== 0) {
+          // Snapping wins over the step, exactly as it does when moving.
           dx += snap.deltaXMm
           dy += snap.deltaYMm
-          bounds = resizeRect(session.startBounds, handle, dx, dy, { keepRatio, fromCenter })
+          bounds = resizeRect(session.startBounds, handle, dx, dy, { keepRatio, fromCenter, ratioDriver })
         }
         session.prevXKey = snap.xKey
         session.prevYKey = snap.yKey

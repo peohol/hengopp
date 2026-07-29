@@ -32,8 +32,12 @@ export const settingsSchema = z.object({
   movementStepMm: z.number().finite().positive(),
   snapToGrid: z.boolean(),
   snapToObjects: z.boolean(),
-  /** Quantise free drag to the movement step. Off by default (continuous drag + snapping). */
-  quantiseDrag: z.boolean().default(false),
+  /**
+   * Quantise free drag – both position and size – to the movement step.
+   * On by default: the canvas gives round changes, and exact values are typed
+   * into the position and size fields in the menu.
+   */
+  quantiseDrag: z.boolean().default(true),
 })
 export type ProjectSettings = z.infer<typeof settingsSchema>
 
@@ -81,7 +85,7 @@ export function createEmptyProject(id: string): HengoppProject {
       movementStepMm: 10,
       snapToGrid: true,
       snapToObjects: true,
-      quantiseDrag: false,
+      quantiseDrag: true,
     },
     isDraftSetup: true,
   }

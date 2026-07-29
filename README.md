@@ -67,7 +67,7 @@ src/geometry/
   snapping.ts      snapkandidater, snapmål, kandidatvalg med hysterese og semantisk prioritet
   alignment.ts     énakset justering mot flaten eller nøkkelobjektet
   distribution.ts  fordeling mot utvalg eller flate, kant- eller ankerbasert
-  resizing.ts      åtte håndtak, ratio-lås, skalering fra sentrum, mapping av barn
+  resizing.ts      åtte håndtak, ratio-lås med drivende dimensjon, skalering fra sentrum, mapping av barn
   groups.ts        nestede grupper, bounding box, nivåoppløsning, låsing, sykkelvern
   zorder.ts        lagrekkefølge for blokker, normalisering av z-verdier
   measurements.ts  fire avstander til flatens kanter
@@ -105,6 +105,20 @@ bare y. Det gjør det mulig å justere vannrett uten å røre loddrett plasserin
 Fordeling er en egen meny med samme oppbygning: referanse (de ytterste objektene eller flaten),
 hva avstanden måles mellom (kantene eller ankerpunktene), og – ved flatereferanse – om det skal
 være like mye luft ytterst.
+
+#### Objektfarger
+
+Objekter velger farge fra en lukket palett (`src/models/palette.ts`): 12 kulører × 4 lysstyrkenivåer,
+alle med samme metning (40 %). Nivåene holder seg unna ytterpunktene, så hverken svart eller hvitt er
+med. En lukket palett gjør at en tegning henger sammen visuelt uansett hvem som lager den, og 48
+farger holder likevel i praksis. Modalen viser paletten som et rutenett med kulørene bortover og
+lysstyrken nedover (`ColorGrid`); kantfargen utledes fortsatt av fyllet (`deriveBorderColor`) og
+vises bare i forhåndsvisningen, ikke som en egen innstilling.
+
+Et nytt objekt får automatisk en tilfeldig palettfarge som ingen andre objekter bruker
+(`pickObjectColor`), slik at et prosjekt blir variert uten at brukeren må tenke på det. Er alle 48
+opptatt, starter vi forfra på hele paletten. Valget kan alltid overstyres i rutenettet – flere
+objekter i samme farge er lov, det er bare ikke standarden.
 
 #### Målelapper
 
@@ -235,6 +249,32 @@ Mens verktøyet er aktivt eier det hvert trykk på lerretet – også et som lan
 som er nettopp der en måling ofte starter. Skillelinjene lyser fortsatt opp ved hovering, men flyttes
 først når man går tilbake til valgverktøyet.
 
+#### Endringssteg
+
+`movementStepMm` er ett felles steg for hele appen. Piltastene og pluss/minus-knappene bruker det
+alltid. `quantiseDrag` – **på for nye prosjekter** – lar det gjelde også når man drar i lerretet med
+mus eller finger, og da for **både posisjon og størrelse**: en dragning flytter i hele steg, og et
+håndtak endrer bredden eller høyden i hele steg. Lerretet gir dermed runde verdier, mens nøyaktig
+posisjon og størrelse skrives inn i feltene i menyen. Snapping regnes ut etter kvantiseringen og
+vinner over den, slik at en snappet kant treffer målet nøyaktig.
+
+Ved skalering fra sentrum (`Alt`) flytter begge kantene, så steget legges på halvparten hver, og
+størrelsen endres fortsatt i hele steg.
+
+##### Drivende dimensjon ved ratio-lås
+
+`Shift` beholder forholdet mellom bredde og høyde. Da kan bare én av dem endres i hele steg – den
+andre må beregnes fra forholdet. Hjørnehåndtakene velger den drivende dimensjonen ut fra
+dragningsvektoren (`ratioDriverForDrag`):
+
+| Dragning | Drivende | Beregnet |
+| --- | --- | --- |
+| mest loddrett (`abs(dy) > abs(dx)`) | høyden, i hele steg | bredden = høyden × forholdet |
+| mest vannrett (ellers) | bredden, i hele steg | høyden = bredden ÷ forholdet |
+
+Kanthåndtakene (`n`, `s`, `e`, `w`) kan bare endre sin egen dimensjon, så de driver alltid den –
+uansett hvilken vei pekeren beveger seg.
+
 ### Persistens
 
 Dokumentformatet er versjonert (`schemaVersion`, nå 2) og valideres med Zod ved innlasting og import.
@@ -267,7 +307,8 @@ handlinger, aldri under `pointermove`.
 | Musehjul | Zoom rundt pekeren (`Ctrl/Cmd` + hjul, altså pinch på styreflate, zoomer også lerretet) |
 
 Under flytting: `Shift` låser til dominerende akse, `Alt` slår av snapping.
-Under skalering: `Shift` beholder forholdet, `Alt` skalerer fra sentrum (og slår av snapping).
+Under skalering: `Shift` beholder forholdet – den retningen du drar mest i, styrer og endres i hele
+steg – og `Alt` skalerer fra sentrum (og slår av snapping).
 Under måling: `Shift` låser til vannrett eller loddrett, `Alt` gir fri måling.
 
 ## Touch
@@ -312,8 +353,8 @@ rulling som siste sikring på svært små skjermer, slik at ingen kontroll blir 
 - **Enhetstester** (`src/tests/`, Vitest): enheter og parsing, rutenett inkl. desimale celler og
   transponering, bounding box og skalering, snapping (terskel, hysterese, prioritet, ekskludering),
   justering (begge akser, begge referanser, begge midtstillingsbaser), fordeling (alle modi),
-  plassering av målelapper, ankerets snaplinjer og terskel, linjalintervaller, skillelinjer,
-  målelinjer, låsing, historikk og persistens.
+  plassering av målelapper, ankerets snaplinjer og terskel, objektpaletten og automatisk fargevalg,
+  linjalintervaller, skillelinjer, målelinjer, låsing, historikk og persistens.
 - **Ende-til-ende** (`e2e/`, Playwright): to prosjekter – `desktop` (1440 × 900) og `narrow-touch`
   (390 × 780 med touch). Dekker oppsett, oppretting, opasitet, flytting, skalering, undo/redo,
   flervalg, justering, fordeling, gruppering, låsing, avstandslinjer, skillelinjer, målelinjer,

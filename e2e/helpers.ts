@@ -10,6 +10,7 @@ export type DocSnapshot = {
       yMm: number
       widthMm: number
       heightMm: number
+      fillColor: string
       fillOpacity: number
       locked: boolean
       parentGroupId: string | null

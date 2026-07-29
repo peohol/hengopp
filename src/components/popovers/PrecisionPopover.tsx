@@ -3,7 +3,7 @@ import { LengthField } from '@/components/common/NumberField'
 import { useProjectStore } from '@/state/project-store'
 import { STEP_PRESETS, formatLength } from '@/utils/units'
 
-/** Movement step (used by arrow keys and the +/- buttons in numeric inputs). */
+/** Change step (arrow keys, the +/- buttons in numeric inputs and free drag). */
 export function StepPopover() {
   const doc = useProjectStore((s) => s.doc)
   const patch = useProjectStore((s) => s.patch)
@@ -13,7 +13,7 @@ export function StepPopover() {
     <Popover
       icon="unit"
       label={`Steg ${formatLength(doc.settings.movementStepMm, doc.displayUnit)}`}
-      hint="Endringssteg for piltaster og +/- knapper"
+      hint="Endringssteg for piltaster, +/- knapper og draoperasjoner"
       showLabel
       title="Endringssteg"
       testId="step-popover"
@@ -51,12 +51,14 @@ export function StepPopover() {
               data-testid="quantise-drag"
               onChange={(e) => patch((draft) => void (draft.settings.quantiseDrag = e.target.checked))}
             />
-            <span>Bruk steget også ved fri flytting med mus og finger</span>
+            <span>Bruk steget også ved fri flytting og skalering med mus og finger</span>
           </label>
           <hr className="msep" />
           <p className="hint">
-            Endringssteget brukes av piltaster og pluss/minus. Snapping er en egen mekanisme – som standard
-            er flytting kontinuerlig med snapping.
+            Endringssteget brukes av piltaster og pluss/minus. Står valget over på – som det gjør fra
+            start – endres både posisjon og størrelse i hele steg når du drar i lerretet, og nøyaktige
+            verdier settes i feltene for posisjon og størrelse. Snapping er en egen mekanisme som
+            gjelder uansett.
           </p>
         </div>
       )}

@@ -26,7 +26,10 @@ const ROWS: [string, string][] = [
   ['Dra på tomt område', 'Seleksjonsrektangel (velger objekter helt innenfor)'],
   ['Alt under flytting', 'Slå av snapping midlertidig'],
   ['Shift under flytting', 'Lås til dominerende akse'],
-  ['Shift under skalering', 'Behold forholdet mellom bredde og høyde'],
+  [
+    'Shift under skalering',
+    'Behold forholdet – den retningen du drar mest i, styrer og endres i hele steg',
+  ],
   ['Alt under skalering', 'Skaler fra sentrum (snapping er da av)'],
   ['Dobbeltklikk objekt', 'Åpne redigeringsdialogen'],
   ['Dobbeltklikk gruppe', 'Gå inn i gruppen'],

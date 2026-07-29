@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { anchorPoint, constrainAnchor, rectOf, shapeContainsPoint, unionRects } from '@/geometry/bounds'
 import { entitiesBounds, entityBounds, objectIdsOfEntities } from '@/geometry/groups'
-import { mapRectBetweenBounds, resizeRect } from '@/geometry/resizing'
+import { mapRectBetweenBounds, ratioDriverForDrag, resizeRect } from '@/geometry/resizing'
 import { makeGroup, makeObject, makeProject } from './helpers'
 
 describe('bounding boxes', () => {
@@ -96,6 +96,33 @@ describe('resize', () => {
     expect(r.width / r.height).toBeCloseTo(start.width / start.height, 9)
     expect(r.width).toBe(300)
     expect(r.height).toBe(150)
+  })
+
+  it('picks the driving dimension from the drag vector', () => {
+    expect(ratioDriverForDrag(10, 4)).toBe('width')
+    expect(ratioDriverForDrag(-10, 4)).toBe('width')
+    expect(ratioDriverForDrag(4, 10)).toBe('height')
+    expect(ratioDriverForDrag(-4, -10)).toBe('height')
+    // A perfectly diagonal drag has no dominant direction; width drives.
+    expect(ratioDriverForDrag(10, 10)).toBe('width')
+  })
+
+  it('drives the ratio lock from the dominant drag direction', () => {
+    // Mostly vertical: the height follows the pointer, the width is derived.
+    const vertical = resizeRect(start, 'se', 20, 50, { keepRatio: true, ratioDriver: 'height' })
+    expect(vertical.height).toBe(150)
+    expect(vertical.width).toBe(300)
+
+    // Mostly horizontal: the roles swap, from the very same drag.
+    const horizontal = resizeRect(start, 'se', 20, 50, { keepRatio: true, ratioDriver: 'width' })
+    expect(horizontal.width).toBe(220)
+    expect(horizontal.height).toBe(110)
+  })
+
+  it('lets a side handle drive its own dimension whatever the drag direction', () => {
+    const r = resizeRect(start, 'e', 40, 999, { keepRatio: true, ratioDriver: 'height' })
+    expect(r.width).toBe(240)
+    expect(r.height).toBe(120)
   })
 
   it('combines ratio lock and centre scaling', () => {

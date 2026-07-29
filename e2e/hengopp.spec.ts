@@ -21,16 +21,24 @@ async function centerOf(page: Page, name: string) {
   return { x: o.xMm + o.widthMm / 2, y: o.yMm + o.heightMm / 2 }
 }
 
-async function dragHandle(page: Page, handle: string, dxPx: number, dyPx: number) {
+async function dragHandle(
+  page: Page,
+  handle: string,
+  dxPx: number,
+  dyPx: number,
+  options: { modifiers?: ('Alt' | 'Shift' | 'Control' | 'Meta')[] } = {},
+) {
   const box = await page.getByTestId(`handle-${handle}`).boundingBox()
   if (!box) throw new Error(`Handle ${handle} not found`)
   const cx = box.x + box.width / 2
   const cy = box.y + box.height / 2
+  for (const key of options.modifiers ?? []) await page.keyboard.down(key)
   await page.mouse.move(cx, cy)
   await page.mouse.down()
   await page.mouse.move(cx + 6, cy + 6, { steps: 2 })
   await page.mouse.move(cx + dxPx, cy + dyPx, { steps: 12 })
   await page.mouse.up()
+  for (const key of options.modifiers ?? []) await page.keyboard.up(key)
 }
 
 test.describe('Hengopp', () => {
@@ -98,6 +106,38 @@ test.describe('Hengopp', () => {
     expect(await historyLength(page)).toBe(historyBeforeInput + 1)
   })
 
+  test('3b: new objects get distinct palette colours, overridable from the grid', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page)
+
+    await createObject(page, { name: 'En' })
+    await createObject(page, { name: 'To' })
+    await createObject(page, { name: 'Tre' })
+
+    const doc = await getDoc(page)
+    const fills = Object.values(doc.objects).map((o) => o.fillColor)
+    expect(fills).toHaveLength(3)
+    // Automatic colours are always distinct, and always from the palette.
+    expect(new Set(fills).size).toBe(3)
+    for (const fill of fills) expect(fill).toMatch(/^#[0-9a-f]{6}$/)
+
+    // The grid is 12 hues × 4 brightness levels, and a click overrides the pick.
+    await page.getByTestId('new-object').click()
+    const grid = page.getByTestId('object-fill')
+    await expect(grid.locator('.color-grid__cell')).toHaveCount(48)
+    await expect(page.getByText('Farge', { exact: true })).toBeVisible()
+    // The derived border is only shown in the preview, not among the settings.
+    await expect(page.getByTestId('object-border')).toHaveCount(0)
+
+    const target = grid.locator('.color-grid__cell').nth(13)
+    const targetColor = await target.getAttribute('data-color')
+    await target.click()
+    await page.getByTestId('object-name').fill('Fire')
+    await page.getByTestId('object-save').click()
+
+    expect((await objectByName(page, 'Fire')).fillColor).toBe(targetColor)
+  })
+
   test('4: resize with a corner handle', async ({ page }) => {
     await gotoApp(page)
     await completeSetup(page)
@@ -122,6 +162,42 @@ test.describe('Hengopp', () => {
     await page.getByTestId('prop-width').fill('80')
     await page.getByTestId('prop-width').press('Enter')
     expect((await objectByName(page, 'Bilde')).widthMm).toBe(800)
+  })
+
+  test('4b: the change step governs free drag and resizing alike', async ({ page }) => {
+    await gotoApp(page)
+    await completeSetup(page)
+    await createObject(page, { name: 'Bilde', widthCm: 60, heightCm: 40 })
+    await disableSnapping(page)
+
+    // The default step is 10 mm and quantised dragging is on for new projects.
+    const onStep = (v: number) => Math.abs(v / 10 - Math.round(v / 10)) < 1e-6
+
+    const before = await objectByName(page, 'Bilde')
+    const center = await centerOf(page, 'Bilde')
+    await dragModel(page, center, { x: center.x + 237, y: center.y + 143 })
+    let after = await objectByName(page, 'Bilde')
+    expect(after.xMm).not.toBe(before.xMm)
+    expect(onStep(after.xMm)).toBe(true)
+    expect(onStep(after.yMm)).toBe(true)
+
+    // Resizing follows the same step.
+    await clickModel(page, await centerOf(page, 'Bilde'))
+    await dragHandle(page, 'se', 63, 47)
+    after = await objectByName(page, 'Bilde')
+    expect(after.widthMm).toBeGreaterThan(before.widthMm)
+    expect(after.heightMm).toBeGreaterThan(before.heightMm)
+    expect(onStep(after.widthMm)).toBe(true)
+    expect(onStep(after.heightMm)).toBe(true)
+
+    // Shift keeps the ratio. Dragging mostly downwards steps the height; the
+    // width is derived from it and may land between steps.
+    const ratio = after.widthMm / after.heightMm
+    await dragHandle(page, 'se', 10, 90, { modifiers: ['Shift'] })
+    const tall = await objectByName(page, 'Bilde')
+    expect(tall.heightMm).toBeGreaterThan(after.heightMm)
+    expect(onStep(tall.heightMm)).toBe(true)
+    expect(tall.widthMm / tall.heightMm).toBeCloseTo(ratio, 6)
   })
 
   test('5: undo and redo', async ({ page }) => {

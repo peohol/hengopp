@@ -42,8 +42,6 @@ export const sceneObjectSchema = z.object({
 
 export type SceneObject = z.infer<typeof sceneObjectSchema>
 
-export const DEFAULT_OBJECT_FILL = '#c9d7e6'
-
 /** Opacity a newly created object starts at. */
 export const DEFAULT_OBJECT_OPACITY = 0.8
 
