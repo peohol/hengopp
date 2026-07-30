@@ -14,10 +14,16 @@ export const measureLineSchema = z.object({
   /** Pinned lines keep their labels visible without hovering. */
   pinned: z.boolean().default(false),
   startAttachment: z
-    .object({ objectId: z.string().min(1), xRatio: z.number().finite(), yRatio: z.number().finite() })
+    .object({
+      x: z.object({ objectId: z.string().min(1), ratio: z.number().finite() }).optional(),
+      y: z.object({ objectId: z.string().min(1), ratio: z.number().finite() }).optional(),
+    })
     .optional(),
   endAttachment: z
-    .object({ objectId: z.string().min(1), xRatio: z.number().finite(), yRatio: z.number().finite() })
+    .object({
+      x: z.object({ objectId: z.string().min(1), ratio: z.number().finite() }).optional(),
+      y: z.object({ objectId: z.string().min(1), ratio: z.number().finite() }).optional(),
+    })
     .optional(),
 })
 

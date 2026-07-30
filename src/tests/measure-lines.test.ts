@@ -213,7 +213,7 @@ describe('measuring endpoint attachments', () => {
       },
       project,
     )
-    expect(attachment).toEqual({ objectId: 'a', xRatio: 0, yRatio: 0.14 })
+    expect(attachment).toEqual({ x: { objectId: 'a', ratio: 0 }, y: { objectId: 'a', ratio: 0.14 } })
   })
 
   it('moves only attached ends and preserves their relative position after resize', () => {
@@ -224,12 +224,12 @@ describe('measuring endpoint attachments', () => {
       measureLines: [
         {
           ...line(100, 228, 900, 700),
-          startAttachment: { objectId: 'a', xRatio: 0, yRatio: 0.14 },
+          startAttachment: { x: { objectId: 'a', ratio: 0 }, y: { objectId: 'a', ratio: 0.14 } },
         },
         {
           ...line(200, 300, 700, 150), id: 'both',
-          startAttachment: { objectId: 'a', xRatio: 1, yRatio: 0.5 },
-          endAttachment: { objectId: 'b', xRatio: 0.5, yRatio: 0.5 },
+          startAttachment: { x: { objectId: 'a', ratio: 1 }, y: { objectId: 'a', ratio: 0.5 } },
+          endAttachment: { x: { objectId: 'b', ratio: 0.5 }, y: { objectId: 'b', ratio: 0.5 } },
         },
       ],
     })
@@ -244,9 +244,44 @@ describe('measuring endpoint attachments', () => {
     expect(changed.measureLines[1]).toMatchObject({ x1Mm: 400, y1Mm: 600, x2Mm: 1000, y2Mm: 550 })
   })
 
+  it('preserves both object targets at a cross-object snap intersection', () => {
+    const project = makeProject([
+      makeObject({ id: 'a', xMm: 100, yMm: 100, widthMm: 100, heightMm: 200 }),
+      makeObject({ id: 'b', xMm: 300, yMm: 400, widthMm: 200, heightMm: 100 }),
+    ])
+    const attachment = attachmentFromSnap(
+      { x: 200, y: 400 },
+      {
+        x: {
+          axis: 'x', pos: 200, from: 100, to: 300, source: 'object',
+          targetKind: 'edge-end', movingKind: 'edge-start', refId: 'a',
+        },
+        y: {
+          axis: 'y', pos: 400, from: 300, to: 500, source: 'object',
+          targetKind: 'edge-start', movingKind: 'edge-start', refId: 'b',
+        },
+      },
+      project,
+    )
+    expect(attachment).toEqual({
+      x: { objectId: 'a', ratio: 1 },
+      y: { objectId: 'b', ratio: 0 },
+    })
+
+    const changed = produce(
+      { ...project, measureLines: [{ ...line(200, 400, 900, 700), startAttachment: attachment }] },
+      (draft) => {
+        draft.objects.a.xMm = 250
+        draft.objects.b.yMm = 600
+        syncMeasureAttachments(draft)
+      },
+    )
+    expect(changed.measureLines[0]).toMatchObject({ x1Mm: 350, y1Mm: 600 })
+  })
+
   it('leaves an endpoint in place when its attached object is deleted', () => {
     const project = makeProject([makeObject({ id: 'a', xMm: 100, yMm: 100 })], [], {
-      measureLines: [{ ...line(100, 150, 300, 300), startAttachment: { objectId: 'a', xRatio: 0, yRatio: 0.5 } }],
+      measureLines: [{ ...line(100, 150, 300, 300), startAttachment: { x: { objectId: 'a', ratio: 0 }, y: { objectId: 'a', ratio: 0.5 } } }],
     })
     const changed = produce(project, (draft) => {
       delete draft.objects.a
@@ -260,7 +295,7 @@ describe('measuring endpoint attachments', () => {
     const object = makeObject({ id: 'a', xMm: 100, yMm: 200, widthMm: 100, heightMm: 200 })
     const attached = {
       ...line(100, 228, 900, 700),
-      startAttachment: { objectId: 'a', xRatio: 0, yRatio: 0.14 },
+      startAttachment: { x: { objectId: 'a', ratio: 0 }, y: { objectId: 'a', ratio: 0.14 } },
     }
     const resolved = previewAttachedMeasureLine(attached, { a: object }, {
       a: { xMm: 300, yMm: 400, widthMm: 200, heightMm: 400 },
