@@ -13,6 +13,19 @@ export const measureLineSchema = z.object({
   y2Mm: z.number().finite(),
   /** Pinned lines keep their labels visible without hovering. */
   pinned: z.boolean().default(false),
+  startAttachment: z
+    .object({
+      x: z.object({ objectId: z.string().min(1), ratio: z.number().finite() }).optional(),
+      y: z.object({ objectId: z.string().min(1), ratio: z.number().finite() }).optional(),
+    })
+    .optional(),
+  endAttachment: z
+    .object({
+      x: z.object({ objectId: z.string().min(1), ratio: z.number().finite() }).optional(),
+      y: z.object({ objectId: z.string().min(1), ratio: z.number().finite() }).optional(),
+    })
+    .optional(),
 })
 
 export type MeasureLine = z.infer<typeof measureLineSchema>
+export type MeasureAttachment = NonNullable<MeasureLine['startAttachment']>

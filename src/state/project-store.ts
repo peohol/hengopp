@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { produce, type Draft } from 'immer'
 import type { HengoppProject } from '@/models/project'
 import { HISTORY_LIMIT, loadProject, saveProject } from './persistence'
+import { syncMeasureAttachments } from '@/geometry/measure-attachments'
 
 export type DocRecipe = (draft: Draft<HengoppProject>) => void
 
@@ -38,6 +39,12 @@ export type ProjectStore = {
 }
 
 const signature = (doc: HengoppProject) => JSON.stringify(doc)
+
+const applyRecipe = (doc: HengoppProject, recipe: DocRecipe) =>
+  produce(doc, (draft) => {
+    recipe(draft)
+    syncMeasureAttachments(draft)
+  })
 
 export function docsEqual(a: HengoppProject, b: HengoppProject): boolean {
   return a === b || signature(a) === signature(b)
@@ -76,7 +83,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   commit: (recipe) => {
     const state = get()
-    const next = produce(state.doc, recipe)
+    const next = applyRecipe(state.doc, recipe)
     if (docsEqual(state.doc, next)) return false
     set({
       doc: next,
@@ -90,16 +97,16 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   patch: (recipe) => {
     const state = get()
-    const next = produce(state.doc, recipe)
+    const next = applyRecipe(state.doc, recipe)
     if (docsEqual(state.doc, next)) return
     // A patch is not part of the document history, so it must apply to every
     // point in it too. Otherwise undoing an unrelated action would silently
     // revert the display unit or a setting along with it.
     set({
       doc: next,
-      past: state.past.map((entry) => produce(entry, recipe)),
-      future: state.future.map((entry) => produce(entry, recipe)),
-      txnBase: state.txnBase ? produce(state.txnBase, recipe) : null,
+      past: state.past.map((entry) => applyRecipe(entry, recipe)),
+      future: state.future.map((entry) => applyRecipe(entry, recipe)),
+      txnBase: state.txnBase ? applyRecipe(state.txnBase, recipe) : null,
     })
     scheduleSave(get, set)
   },
@@ -113,7 +120,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   updateTransient: (recipe) => {
     const state = get()
     if (!state.txnBase) return
-    const next = produce(state.doc, recipe)
+    const next = applyRecipe(state.doc, recipe)
     if (docsEqual(state.doc, next)) return
     set({ doc: next })
   },
