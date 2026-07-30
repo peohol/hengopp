@@ -861,10 +861,16 @@ export function useCanvasInteractions(svgRef: RefObject<SVGSVGElement>): CanvasH
         return
       }
 
-      // An end of an existing measuring line: drag it to a new position. Like
-      // resize handles, these win over whatever is underneath them.
-      const measureEndId = attributeFromEvent(e.target, 'data-measure-end-id')
-      const measureEnd = attributeFromEvent(e.target, 'data-measure-end') as MeasureEnd | null
+      // An endpoint wins even when it coincides exactly with a selected
+      // object's resize handle. SVG hit testing normally only reports the
+      // topmost handle, so inspect the complete stack at the pointer. Moving
+      // the endpoint away detaches it and exposes the resize handle again.
+      const stackedMeasureEnd = document
+        .elementsFromPoint(e.clientX, e.clientY)
+        .find((el) => el.hasAttribute('data-measure-end-id'))
+      const measureEndTarget = stackedMeasureEnd ?? e.target
+      const measureEndId = attributeFromEvent(measureEndTarget, 'data-measure-end-id')
+      const measureEnd = attributeFromEvent(measureEndTarget, 'data-measure-end') as MeasureEnd | null
       if (measureEndId && measureEnd) {
         e.preventDefault()
         svg.setPointerCapture(e.pointerId)

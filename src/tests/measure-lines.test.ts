@@ -9,7 +9,11 @@ import {
   measureMetrics,
 } from '@/geometry/measure-lines'
 import { snapPoint, buildSnapTargets } from '@/geometry/snapping'
-import { attachmentFromSnap, syncMeasureAttachments } from '@/geometry/measure-attachments'
+import {
+  attachmentFromSnap,
+  previewAttachedMeasureLine,
+  syncMeasureAttachments,
+} from '@/geometry/measure-attachments'
 import { DEFAULT_SURFACE_GRID } from '@/models/grid'
 import {
   addMeasureLine,
@@ -250,5 +254,19 @@ describe('measuring endpoint attachments', () => {
     })
     expect(changed.measureLines[0]).toMatchObject({ x1Mm: 100, y1Mm: 150 })
     expect(changed.measureLines[0].startAttachment).toBeUndefined()
+  })
+
+  it('resolves attached endpoints against transient move and resize previews', () => {
+    const object = makeObject({ id: 'a', xMm: 100, yMm: 200, widthMm: 100, heightMm: 200 })
+    const attached = {
+      ...line(100, 228, 900, 700),
+      startAttachment: { objectId: 'a', xRatio: 0, yRatio: 0.14 },
+    }
+    const resolved = previewAttachedMeasureLine(attached, { a: object }, {
+      a: { xMm: 300, yMm: 400, widthMm: 200, heightMm: 400 },
+    })
+    expect(resolved).toMatchObject({ x1Mm: 300, y1Mm: 456, x2Mm: 900, y2Mm: 700 })
+    // Previewing is render-only; the persisted line remains untouched.
+    expect(attached).toMatchObject({ x1Mm: 100, y1Mm: 228 })
   })
 })

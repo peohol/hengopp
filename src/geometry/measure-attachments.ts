@@ -3,6 +3,8 @@ import type { HengoppProject } from '@/models/project'
 import type { MeasureAttachment } from '@/models/measure'
 import type { SnapGuide } from './snapping'
 import { roundMm } from '@/utils/units'
+import type { SceneObject } from '@/models/object'
+import type { MeasureLine } from '@/models/measure'
 
 /** Describe a snapped point in object-relative coordinates so it survives resize. */
 export function attachmentFromSnap(
@@ -45,4 +47,28 @@ export function syncMeasureAttachments(draft: Draft<HengoppProject>): void {
       }
     }
   }
+}
+
+type ObjectGeometry = Pick<SceneObject, 'xMm' | 'yMm' | 'widthMm' | 'heightMm'>
+
+/** Resolve attachments against live preview rectangles without changing the document. */
+export function previewAttachedMeasureLine(
+  line: MeasureLine,
+  objects: Record<string, SceneObject>,
+  preview: Record<string, ObjectGeometry>,
+): MeasureLine {
+  let resolved = line
+  for (const end of ['start', 'end'] as const) {
+    const attachment = line[`${end}Attachment`]
+    if (!attachment) continue
+    const stored = objects[attachment.objectId]
+    if (!stored) continue
+    const object = preview[attachment.objectId] ?? stored
+    const x = roundMm(object.xMm + object.widthMm * attachment.xRatio)
+    const y = roundMm(object.yMm + object.heightMm * attachment.yRatio)
+    resolved = end === 'start'
+      ? { ...resolved, x1Mm: x, y1Mm: y }
+      : { ...resolved, x2Mm: x, y2Mm: y }
+  }
+  return resolved
 }

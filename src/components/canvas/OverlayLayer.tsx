@@ -16,6 +16,7 @@ import { formatLength } from '@/utils/units'
 import { GuidesLayer } from './GuidesLayer'
 import { MeasureLayer } from './MeasureLayer'
 import { isOutsideSurface, previewedEntityBounds, previewedRect, previewedSelectionBounds } from './scene-helpers'
+import { previewAttachedMeasureLine } from '@/geometry/measure-attachments'
 
 const ACCENT = '#2f6fd0'
 const HANDLE_SIZE = 9
@@ -59,6 +60,11 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport, coarsePo
   const selectionBounds = useMemo(
     () => previewedSelectionBounds(doc, preview, selection),
     [doc, preview, selection],
+  )
+
+  const previewedMeasureLines = useMemo(
+    () => doc.measureLines.map((line) => previewAttachedMeasureLine(line, doc.objects, preview)),
+    [doc.measureLines, doc.objects, preview],
   )
 
   const outside = useMemo(() => {
@@ -262,7 +268,7 @@ export const OverlayLayer = memo(function OverlayLayer({ doc, viewport, coarsePo
 
       {/* Free measuring lines. */}
       <MeasureLayer
-        lines={doc.measureLines}
+        lines={previewedMeasureLines}
         draft={measureDraft}
         unit={doc.displayUnit}
         sx={sx}
